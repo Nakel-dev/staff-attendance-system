@@ -1,0 +1,73 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  LayoutDashboard,
+  Users,
+  ClipboardCheck,
+  CalendarDays,
+  BarChart3,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { LucideIcon } from "lucide-react";
+
+interface NavLink {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  badge?: boolean;
+}
+
+interface MobileNavProps {
+  role: "admin" | "staff";
+  pendingLeaves?: number;
+}
+
+const adminLinks: NavLink[] = [
+  { href: "/dashboard", label: "Home", icon: LayoutDashboard },
+  { href: "/staff", label: "Staff", icon: Users },
+  { href: "/attendance", label: "Attendance", icon: ClipboardCheck },
+  { href: "/leaves", label: "Leaves", icon: CalendarDays, badge: true },
+  { href: "/reports", label: "Reports", icon: BarChart3 },
+];
+
+const staffLinks: NavLink[] = [
+  { href: "/my-attendance", label: "Attendance", icon: ClipboardCheck },
+  { href: "/my-leaves", label: "Leaves", icon: CalendarDays },
+];
+
+export function MobileNav({ role, pendingLeaves = 0 }: MobileNavProps) {
+  const pathname = usePathname();
+  const links = role === "admin" ? adminLinks : staffLinks;
+
+  return (
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t bg-background no-print">
+      <div className="flex items-center justify-around py-2">
+        {links.map((link) => {
+          const Icon = link.icon;
+          const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
+          const showBadge = !!link.badge && pendingLeaves > 0;
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={cn(
+                "flex flex-col items-center gap-1 px-2 py-1 text-xs relative",
+                isActive ? "text-primary" : "text-muted-foreground"
+              )}
+            >
+              <Icon className="h-5 w-5" />
+              <span>{link.label}</span>
+              {showBadge && (
+                <span className="absolute top-0 right-0 h-4 w-4 rounded-full bg-destructive text-[10px] text-white flex items-center justify-center">
+                  {pendingLeaves > 9 ? "9+" : pendingLeaves}
+                </span>
+              )}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
