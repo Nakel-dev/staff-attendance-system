@@ -9,9 +9,10 @@ import { Label } from "@/components/ui/label";
 
 interface SignInFormProps {
   onSwitchToSignUp: () => void;
+  onForgotPassword?: () => void;
 }
 
-export function SignInForm({ onSwitchToSignUp }: SignInFormProps) {
+export function SignInForm({ onSwitchToSignUp, onForgotPassword }: SignInFormProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -102,6 +103,17 @@ export function SignInForm({ onSwitchToSignUp }: SignInFormProps) {
             </Button>
           </div>
         </div>
+        {onForgotPassword && (
+          <div className="text-right">
+            <button
+              type="button"
+              onClick={onForgotPassword}
+              className="text-sm text-primary hover:underline"
+            >
+              Forgot password?
+            </button>
+          </div>
+        )}
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? (
             <>

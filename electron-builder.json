@@ -1,0 +1,27 @@
+{
+  "appId": "com.attendpro.desktop",
+  "productName": "AttendPro",
+  "directories": {
+    "output": "dist/desktop"
+  },
+  "files": [
+    "desktop/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": ".next/standalone",
+      "to": "standalone",
+      "filter": ["**/*"]
+    }
+  ],
+  "win": {
+    "target": ["nsis"],
+    "artifactName": "AttendPro-Setup-${version}.exe"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true
+  }
+}

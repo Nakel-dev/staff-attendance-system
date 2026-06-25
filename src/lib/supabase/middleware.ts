@@ -8,11 +8,13 @@ const ADMIN_ROUTES = [
   "/attendance",
   "/leaves",
   "/reports",
+  "/settings",
 ];
 
 const STAFF_ROUTES = ["/my-attendance"];
 const SHARED_ROUTES = ["/profile", "/my-leaves"];
-const PUBLIC_ROUTES = ["/", AUTH_PATH, "/login", "/register"];
+const PUBLIC_ROUTES = ["/", AUTH_PATH, "/login", "/register", "/terms", "/privacy"];
+const AUTH_SUBROUTES = ["/auth/reset-password"];
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -43,7 +45,8 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
-  const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
+  const isPublicRoute =
+    PUBLIC_ROUTES.includes(pathname) || AUTH_SUBROUTES.some((r) => pathname.startsWith(r));
   const isAuthRoute =
     pathname === AUTH_PATH || pathname === "/login" || pathname === "/register";
 

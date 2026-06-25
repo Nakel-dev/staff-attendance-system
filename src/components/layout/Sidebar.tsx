@@ -11,6 +11,7 @@ import {
   LogOut,
   User,
   Building2,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ const adminLinks: NavLink[] = [
   { href: "/leaves", label: "Leave Requests", icon: CalendarDays, badge: true },
   { href: "/my-leaves", label: "My Leaves", icon: CalendarDays },
   { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 const staffLinks: NavLink[] = [

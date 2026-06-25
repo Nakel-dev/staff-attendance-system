@@ -1,90 +1,110 @@
-# Staff Attendance Management System
+# AttendPro
 
-A full-stack staff attendance and leave management web application built with Next.js 14, Supabase, and shadcn/ui.
+**Professional staff attendance & leave management** — multi-tenant, responsive, ready to deploy as SaaS or Windows desktop software.
+
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Next.js](https://img.shields.io/badge/Next.js-14-black)
+![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-green)
+
+## Live demo
+
+- **App:** https://staff-attendance-system-tau.vercel.app/auth
+- **Docs for buyers:** [COMMERCIAL.md](./COMMERCIAL.md)
+- **Where to sell:** [SELLING.md](./SELLING.md)
 
 ## Features
 
-- **Admin Dashboard** — Real-time stats, charts, and recent activity
-- **Staff Management** — Create, edit, activate/deactivate staff accounts
-- **Attendance Marking** — Bulk daily attendance with check-in/out times
-- **Leave Management** — Apply, approve, and reject leave requests
-- **Reports** — Monthly attendance reports with CSV export and print view
-- **Notifications** — In-app notifications for leave and attendance events
-- **Role-based Access** — Separate admin and staff portals with middleware protection
+### Admin
+- Real-time dashboard with charts and KPIs
+- Staff management (create, edit, activate/deactivate, delete)
+- Bulk daily attendance marking
+- Team leave approval workflow
+- Monthly reports with CSV export and print
+- Organization settings (name, invite code)
+- In-app notifications
 
-## Tech Stack
+### Staff
+- One-click check-in and check-out
+- Personal attendance calendar and history
+- Leave requests with balance tracking
+- Cancel pending leave requests
+- Profile and notifications
 
-- Next.js 14 (App Router, TypeScript)
-- Supabase (PostgreSQL + Auth)
-- Tailwind CSS + shadcn/ui
-- date-fns, recharts, sonner
+### Platform
+- Multi-tenant organizations with invite codes
+- Unified auth (`/auth`) — sign in, register org, join as staff
+- Password reset flow
+- Mobile-responsive UI with bottom navigation
+- Role-based middleware protection
+- Terms & Privacy pages
 
-## Setup
+## Tech stack
 
-### 1. Install dependencies
+- **Frontend:** Next.js 14, TypeScript, Tailwind, shadcn/ui
+- **Backend:** Supabase (Auth + PostgreSQL + RLS)
+- **Desktop:** Electron (optional Windows EXE)
+- **Deploy:** Vercel (recommended)
+
+## Quick start
 
 ```bash
 npm install
-```
-
-### 2. Configure environment
-
-Copy `.env.local.example` to `.env.local` and add your Supabase credentials:
-
-```bash
 cp .env.local.example .env.local
-```
-
-### 3. Set up the database
-
-Run the SQL schema in your Supabase SQL Editor:
-
-```
-supabase/schema.sql
-```
-
-### 4. Seed sample data
-
-```bash
-npx ts-node --compiler-options '{"module":"CommonJS"}' scripts/seed.ts
-```
-
-### 5. Start the development server
-
-```bash
+# Add Supabase credentials to .env.local
+# Run supabase/schema.sql + migrations in Supabase SQL Editor
+npm run seed
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+Open http://localhost:3000
 
-## Default Login Credentials
+### Demo login (after seed)
 
-| Role  | Email              | Password    |
-|-------|--------------------|-------------|
-| Admin | admin@school.com   | Admin1234!  |
-| Staff | emily.chen@school.com | Staff1234! |
+| Role | Email | Password |
+|------|-------|----------|
+| Admin | admin@demo.com | Admin1234! |
+| Staff | emily.chen@demo.com | Staff1234! |
 
-All seeded staff use password `Staff1234!`
-
-## Project Structure
-
-```
-src/
-├── app/
-│   ├── (auth)/login/       # Login page
-│   ├── (admin)/            # Admin routes (dashboard, staff, attendance, leaves, reports)
-│   ├── (staff)/            # Staff routes (my-attendance, my-leaves)
-│   └── profile/            # Shared profile page
-├── components/             # UI and feature components
-├── lib/                    # Supabase clients, actions, hooks, utils
-└── constants/              # App constants
-```
+Staff invite code: **DEMO2026**
 
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Start development server |
+| `npm run dev` | Development server |
 | `npm run build` | Production build |
 | `npm run start` | Start production server |
-| `npx ts-node --compiler-options '{"module":"CommonJS"}' scripts/seed.ts` | Seed database |
+| `npm run seed` | Seed demo organization + staff |
+| `npm run migrate` | Apply SQL migrations (needs DB password) |
+| `npm run desktop:dev` | Run as desktop app (dev) |
+| `npm run desktop:build` | Build Windows EXE installer |
+
+## Project structure
+
+```
+src/app/
+  (admin)/     Admin routes
+  (staff)/     Staff routes
+  (auth)/      Login & registration
+  my-leaves/   Personal leave (all roles)
+  profile/     User profile
+  terms/       Terms of service
+  privacy/     Privacy policy
+desktop/       Electron main process
+supabase/      Schema + migrations
+scripts/       Seed, migrate, standalone prep
+```
+
+## Deployment
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for Vercel + Supabase production setup.
+
+## Selling this product
+
+See [SELLING.md](./SELLING.md) for marketplace recommendations (Gumroad, Lemon Squeezy, CodeCanyon, etc.) and pricing guidance.
+
+See [COMMERCIAL.md](./COMMERCIAL.md) for buyer setup instructions.
+
+## License
+
+Commercial license — see [LICENSE](./LICENSE). Purchase grants single production use unless otherwise agreed.

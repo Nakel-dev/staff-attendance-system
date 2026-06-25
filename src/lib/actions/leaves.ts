@@ -3,6 +3,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { differenceInBusinessDays } from "date-fns";
+import { LEAVE_BALANCE } from "@/constants";
+import { calculateLeaveBalance } from "@/lib/utils/calculateStats";
 import type { LeaveType } from "@/lib/types";
 
 async function notifyAdmins(title: string, message: string, organizationId: string) {
@@ -46,6 +49,31 @@ export async function applyForLeave(data: {
 
     if (new Date(data.end_date) < new Date(data.start_date)) {
       return { error: "End date must be after start date" };
+    }
+
+    const requestedDays =
+      differenceInBusinessDays(new Date(data.end_date), new Date(data.start_date)) + 1;
+
+    if (requestedDays <= 0) {
+      return { error: "Select at least one working day for your leave request" };
+    }
+
+    if (data.leave_type === "annual" || data.leave_type === "sick") {
+      const { data: approvedLeaves } = await supabase
+        .from("leaves")
+        .select("*")
+        .eq("staff_id", profile.id)
+        .eq("status", "approved");
+
+      const allowance =
+        data.leave_type === "annual" ? LEAVE_BALANCE.annual : LEAVE_BALANCE.sick;
+      const balance = calculateLeaveBalance(approvedLeaves || [], data.leave_type, allowance);
+
+      if (requestedDays > balance.remaining) {
+        return {
+          error: `Insufficient ${data.leave_type} leave balance. You have ${balance.remaining} day(s) remaining.`,
+        };
+      }
     }
 
     const { error } = await supabase.from("leaves").insert({

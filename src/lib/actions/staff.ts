@@ -14,6 +14,41 @@ function generatePassword(length = 12) {
   return password;
 }
 
+async function requireOrgAdmin() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" as const };
+
+  const { data: adminProfile } = await supabase
+    .from("profiles")
+    .select("id, role, organization_id")
+    .eq("user_id", user.id)
+    .single();
+
+  if (adminProfile?.role !== "admin" || !adminProfile.organization_id) {
+    return { error: "Unauthorized" as const };
+  }
+
+  return { adminProfile, supabase };
+}
+
+async function assertStaffInOrg(staffId: string, organizationId: string) {
+  const admin = createAdminClient();
+  const { data: target } = await admin
+    .from("profiles")
+    .select("id, user_id, organization_id, email")
+    .eq("id", staffId)
+    .single();
+
+  if (!target || target.organization_id !== organizationId) {
+    return { error: "Staff member not found in your organization" as const };
+  }
+
+  return { target, admin };
+}
+
 export async function createStaffMember(data: {
   full_name: string;
   email: string;
@@ -23,25 +58,14 @@ export async function createStaffMember(data: {
   date_joined: string;
 }) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { error: "Unauthorized" };
-
-    const { data: adminProfile } = await supabase
-      .from("profiles")
-      .select("role, organization_id")
-      .eq("user_id", user.id)
-      .single();
-
-    if (adminProfile?.role !== "admin" || !adminProfile.organization_id) {
-      return { error: "Unauthorized" };
-    }
+    const auth = await requireOrgAdmin();
+    if ("error" in auth) return { error: auth.error };
 
     const password = generatePassword();
     const adminClient = createAdminClient();
 
     const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
-      email: data.email,
+      email: data.email.trim().toLowerCase(),
       password,
       email_confirm: true,
     });
@@ -50,9 +74,9 @@ export async function createStaffMember(data: {
 
     const { error: profileError } = await adminClient.from("profiles").insert({
       user_id: authUser.user.id,
-      organization_id: adminProfile.organization_id,
-      full_name: data.full_name,
-      email: data.email,
+      organization_id: auth.adminProfile.organization_id,
+      full_name: data.full_name.trim(),
+      email: data.email.trim().toLowerCase(),
       phone: data.phone || null,
       department: data.department,
       role: data.role,
@@ -84,12 +108,17 @@ export async function updateStaffMember(
   }
 ) {
   try {
-    const supabase = await createClient();
-    const { error } = await supabase
+    const auth = await requireOrgAdmin();
+    if ("error" in auth) return { error: auth.error };
+
+    const scope = await assertStaffInOrg(id, auth.adminProfile.organization_id);
+    if ("error" in scope) return { error: scope.error };
+
+    const { error } = await scope.admin
       .from("profiles")
       .update({
-        full_name: data.full_name,
-        email: data.email,
+        full_name: data.full_name.trim(),
+        email: data.email.trim().toLowerCase(),
         phone: data.phone || null,
         department: data.department,
         role: data.role,
@@ -99,6 +128,14 @@ export async function updateStaffMember(
       .eq("id", id);
 
     if (error) return { error: error.message };
+
+    const nextEmail = data.email.trim().toLowerCase();
+    if (nextEmail !== scope.target.email) {
+      await scope.admin.auth.admin.updateUserById(scope.target.user_id, {
+        email: nextEmail,
+      });
+    }
+
     revalidatePath("/staff");
     revalidatePath(`/staff/${id}`);
     return { success: true };
@@ -109,8 +146,17 @@ export async function updateStaffMember(
 
 export async function toggleStaffStatus(id: string, isActive: boolean) {
   try {
-    const supabase = await createClient();
-    const { error } = await supabase
+    const auth = await requireOrgAdmin();
+    if ("error" in auth) return { error: auth.error };
+
+    if (id === auth.adminProfile.id) {
+      return { error: "You cannot deactivate your own account" };
+    }
+
+    const scope = await assertStaffInOrg(id, auth.adminProfile.organization_id);
+    if ("error" in scope) return { error: scope.error };
+
+    const { error } = await scope.admin
       .from("profiles")
       .update({ is_active: isActive, updated_at: new Date().toISOString() })
       .eq("id", id);
@@ -130,37 +176,55 @@ export async function deactivateStaff(id: string) {
 
 export async function deleteStaffMember(id: string) {
   try {
+    const auth = await requireOrgAdmin();
+    if ("error" in auth) return { error: auth.error };
+
+    if (id === auth.adminProfile.id) {
+      return { error: "You cannot delete your own account" };
+    }
+
+    const scope = await assertStaffInOrg(id, auth.adminProfile.organization_id);
+    if ("error" in scope) return { error: scope.error };
+
+    const { error: profileError } = await scope.admin.from("profiles").delete().eq("id", id);
+    if (profileError) return { error: profileError.message };
+
+    await scope.admin.auth.admin.deleteUser(scope.target.user_id);
+
+    revalidatePath("/staff");
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Failed to delete staff" };
+  }
+}
+
+export async function updateOwnProfile(data: {
+  full_name: string;
+  phone?: string;
+  department: string;
+}) {
+  try {
     const supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return { error: "Unauthorized" };
 
-    const { data: adminProfile } = await supabase
+    const { error } = await supabase
       .from("profiles")
-      .select("role")
-      .eq("user_id", user.id)
-      .single();
+      .update({
+        full_name: data.full_name.trim(),
+        phone: data.phone || null,
+        department: data.department,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", user.id);
 
-    if (adminProfile?.role !== "admin") return { error: "Unauthorized" };
+    if (error) return { error: error.message };
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("user_id")
-      .eq("id", id)
-      .single();
-
-    if (!profile) return { error: "Staff not found" };
-
-    const adminClient = createAdminClient();
-    const { error: profileError } = await adminClient.from("profiles").delete().eq("id", id);
-    if (profileError) return { error: profileError.message };
-
-    await adminClient.auth.admin.deleteUser(profile.user_id);
-
-    revalidatePath("/staff");
+    revalidatePath("/profile");
     return { success: true };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Failed to delete staff" };
+    return { error: err instanceof Error ? err.message : "Failed to update profile" };
   }
 }

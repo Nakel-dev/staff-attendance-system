@@ -234,3 +234,36 @@ export async function getOrganizationInviteCode() {
     return { error: err instanceof Error ? err.message : "Failed to fetch invite code" };
   }
 }
+
+function getAppUrl() {
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3000";
+}
+
+export async function requestPasswordReset(email: string) {
+  try {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo: `${getAppUrl()}/auth/reset-password`,
+    });
+    if (error) return { error: error.message };
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Failed to send reset email" };
+  }
+}
+
+export async function updatePassword(password: string) {
+  try {
+    if (password.length < 8) return { error: "Password must be at least 8 characters" };
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) return { error: error.message };
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Failed to update password" };
+  }
+}

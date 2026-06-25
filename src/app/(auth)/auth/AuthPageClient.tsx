@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { AuthBranding } from "@/components/auth/AuthBranding";
 import { SignInForm } from "@/components/auth/SignInForm";
+import { ForgotPasswordForm } from "@/components/auth/ForgotPasswordForm";
 import { SignUpPanel } from "@/components/auth/SignUpPanel";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,6 +16,7 @@ type SignUpTab = "organization" | "staff";
 export default function AuthPageClient() {
   const searchParams = useSearchParams();
   const [mode, setMode] = useState<AuthMode>("signin");
+  const [showForgot, setShowForgot] = useState(false);
   const [signUpTab, setSignUpTab] = useState<SignUpTab>("organization");
   const [authError, setAuthError] = useState("");
 
@@ -43,9 +45,11 @@ export default function AuthPageClient() {
         <CardHeader>
           <AuthBranding
             subtitle={
-              mode === "signin"
-                ? "Sign in to your organization account"
-                : "Create an account for your organization"
+              showForgot
+                ? "Reset your password"
+                : mode === "signin"
+                  ? "Sign in to your organization account"
+                  : "Create an account for your organization"
             }
           />
         </CardHeader>
@@ -66,7 +70,14 @@ export default function AuthPageClient() {
             </TabsList>
 
             <TabsContent value="signin">
-              <SignInForm onSwitchToSignUp={() => setMode("signup")} />
+              {showForgot ? (
+                <ForgotPasswordForm onBack={() => setShowForgot(false)} />
+              ) : (
+                <SignInForm
+                  onSwitchToSignUp={() => setMode("signup")}
+                  onForgotPassword={() => setShowForgot(true)}
+                />
+              )}
             </TabsContent>
 
             <TabsContent value="signup">
@@ -77,6 +88,11 @@ export default function AuthPageClient() {
               />
             </TabsContent>
           </Tabs>
+          <p className="text-center text-xs text-muted-foreground mt-6">
+            <a href="/terms" className="hover:underline">Terms</a>
+            {" · "}
+            <a href="/privacy" className="hover:underline">Privacy</a>
+          </p>
         </CardContent>
       </Card>
     </div>
