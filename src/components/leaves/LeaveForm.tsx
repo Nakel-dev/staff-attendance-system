@@ -26,10 +26,12 @@ import {
 } from "@/components/ui/select";
 import { LEAVE_BALANCE, LEAVE_TYPE_LABELS } from "@/constants";
 import { applyForLeave } from "@/lib/actions/leaves";
-import type { LeaveType } from "@/lib/types";
+import type { Leave, LeaveType } from "@/lib/types";
 
 interface LeaveFormProps {
+  staffId?: string;
   onSuccess?: () => void;
+  onLeaveSubmitted?: (leave: Leave) => void;
 }
 
 interface FormState {
@@ -64,7 +66,7 @@ function validateForm(data: FormState): FormErrors {
   return errors;
 }
 
-export function LeaveForm({ onSuccess }: LeaveFormProps) {
+export function LeaveForm({ onSuccess, onLeaveSubmitted }: LeaveFormProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<FormState>({
@@ -111,6 +113,7 @@ export function LeaveForm({ onSuccess }: LeaveFormProps) {
     toast.success("Leave request submitted successfully");
     setForm({ leave_type: "", start_date: "", end_date: "", reason: "" });
     setOpen(false);
+    if (result.leave) onLeaveSubmitted?.(result.leave);
     onSuccess?.();
     router.refresh();
   };
@@ -118,7 +121,7 @@ export function LeaveForm({ onSuccess }: LeaveFormProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
+        <Button className="w-full sm:w-auto shrink-0">
           <Plus className="h-4 w-4 mr-2" />
           Apply for Leave
         </Button>

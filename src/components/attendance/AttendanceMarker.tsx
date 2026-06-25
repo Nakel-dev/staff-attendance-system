@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ATTENDANCE_STATUS_LABELS } from "@/constants";
-import { checkInStaff, saveAttendanceBatch } from "@/lib/actions/attendance";
+import { checkInStaff, checkOutStaff, saveAttendanceBatch } from "@/lib/actions/attendance";
 import { formatTime } from "@/lib/utils/formatDate";
 import type { Attendance, AttendanceStatus, Profile } from "@/lib/types";
 
@@ -57,6 +57,12 @@ export function AttendanceMarker({
   const [rows, setRows] = useState<StaffAttendanceRow[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [localTodayRecord, setLocalTodayRecord] = useState(todayRecord);
+
+  useEffect(() => {
+    setLocalTodayRecord(todayRecord);
+  }, [todayRecord]);
 
   const activeStaff = useMemo(
     () => staff.filter((member) => member.is_active && member.role === "staff"),
@@ -120,9 +126,20 @@ export function AttendanceMarker({
 
   const handleCheckIn = async () => {
     setIsCheckingIn(true);
+    const optimisticTime = format(new Date(), "HH:mm:ss");
+    setLocalTodayRecord((prev) => ({
+      id: prev?.id || "temp",
+      staff_id: prev?.staff_id || "",
+      date: format(new Date(), "yyyy-MM-dd"),
+      status: "present",
+      check_in_time: optimisticTime,
+      check_out_time: prev?.check_out_time,
+      created_at: prev?.created_at || new Date().toISOString(),
+    }));
     const result = await checkInStaff();
     setIsCheckingIn(false);
     if (result.error) {
+      setLocalTodayRecord(todayRecord);
       toast.error(result.error);
       return;
     }
@@ -130,30 +147,65 @@ export function AttendanceMarker({
     router.refresh();
   };
 
+  const handleCheckOut = async () => {
+    setIsCheckingOut(true);
+    const optimisticTime = format(new Date(), "HH:mm:ss");
+    setLocalTodayRecord((prev) =>
+      prev ? { ...prev, check_out_time: optimisticTime } : prev
+    );
+    const result = await checkOutStaff();
+    setIsCheckingOut(false);
+    if (result.error) {
+      setLocalTodayRecord(todayRecord);
+      toast.error(result.error);
+      return;
+    }
+    toast.success(`Checked out at ${result.checkOutTime ? formatTime(result.checkOutTime) : "now"}`);
+    router.refresh();
+  };
+
   if (mode === "staff") {
-    const hasCheckedIn = !!todayRecord?.check_in_time;
+    const hasCheckedIn = !!localTodayRecord?.check_in_time;
+    const hasCheckedOut = !!localTodayRecord?.check_out_time;
     return (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <LogIn className="h-5 w-5" />
-            Daily Check-In
+            Daily Check-In / Check-Out
           </CardTitle>
           <CardDescription>
-            Record your arrival for {format(new Date(), "MMMM d, yyyy")}
+            Record your workday for {format(new Date(), "MMMM d, yyyy")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {hasCheckedIn ? (
-            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
-              <CheckCircle2 className="h-5 w-5" />
-              <span>
-                Checked in at {formatTime(todayRecord!.check_in_time!)} —{" "}
-                {ATTENDANCE_STATUS_LABELS[todayRecord!.status]}
-              </span>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                <CheckCircle2 className="h-5 w-5 shrink-0" />
+                <span>
+                  Checked in at {formatTime(localTodayRecord!.check_in_time!)} —{" "}
+                  {ATTENDANCE_STATUS_LABELS[localTodayRecord!.status]}
+                </span>
+              </div>
+              {hasCheckedOut ? (
+                <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                  <CheckCircle2 className="h-5 w-5 shrink-0" />
+                  <span>Checked out at {formatTime(localTodayRecord!.check_out_time!)}</span>
+                </div>
+              ) : (
+                <Button onClick={handleCheckOut} disabled={isCheckingOut} variant="outline" className="w-full sm:w-auto">
+                  {isCheckingOut ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <LogIn className="mr-2 h-4 w-4 rotate-180" />
+                  )}
+                  Check Out Now
+                </Button>
+              )}
             </div>
           ) : (
-            <Button onClick={handleCheckIn} disabled={isCheckingIn} size="lg">
+            <Button onClick={handleCheckIn} disabled={isCheckingIn} size="lg" className="w-full sm:w-auto">
               {isCheckingIn ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (

@@ -59,6 +59,16 @@ export async function applyForLeave(data: {
 
     if (error) return { error: error.message };
 
+    const { data: insertedLeave, error: fetchError } = await supabase
+      .from("leaves")
+      .select("*")
+      .eq("staff_id", profile.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (fetchError || !insertedLeave) return { error: "Leave submitted but could not load record" };
+
     await notifyAdmins(
       "New Leave Request",
       `${profile.full_name} submitted a ${data.leave_type} leave request from ${data.start_date} to ${data.end_date}.`,
@@ -68,7 +78,7 @@ export async function applyForLeave(data: {
     revalidatePath("/my-leaves");
     revalidatePath("/leaves");
     revalidatePath("/dashboard");
-    return { success: true };
+    return { success: true, leave: insertedLeave };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Failed to apply for leave" };
   }
@@ -126,9 +136,45 @@ export async function reviewLeave(
     revalidatePath("/leaves");
     revalidatePath("/my-leaves");
     revalidatePath("/dashboard");
-    return { success: true };
+    return { success: true, leaveId, status };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Failed to review leave" };
+  }
+}
+
+export async function cancelLeave(leaveId: string) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: "Unauthorized" };
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!profile) return { error: "Profile not found" };
+
+    const { data: leave } = await supabase
+      .from("leaves")
+      .select("id, staff_id, status")
+      .eq("id", leaveId)
+      .single();
+
+    if (!leave) return { error: "Leave not found" };
+    if (leave.staff_id !== profile.id) return { error: "Unauthorized" };
+    if (leave.status !== "pending") return { error: "Only pending requests can be cancelled" };
+
+    const { error } = await supabase.from("leaves").delete().eq("id", leaveId);
+    if (error) return { error: error.message };
+
+    revalidatePath("/my-leaves");
+    revalidatePath("/leaves");
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Failed to cancel leave" };
   }
 }
 

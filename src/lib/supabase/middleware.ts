@@ -10,8 +10,8 @@ const ADMIN_ROUTES = [
   "/reports",
 ];
 
-const STAFF_ROUTES = ["/my-attendance", "/my-leaves"];
-const SHARED_ROUTES = ["/profile"];
+const STAFF_ROUTES = ["/my-attendance"];
+const SHARED_ROUTES = ["/profile", "/my-leaves"];
 const PUBLIC_ROUTES = ["/", AUTH_PATH, "/login", "/register"];
 
 export async function updateSession(request: NextRequest) {

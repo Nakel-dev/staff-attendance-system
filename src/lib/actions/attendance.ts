@@ -117,3 +117,52 @@ export async function checkInStaff() {
     return { error: err instanceof Error ? err.message : "Check-in failed" };
   }
 }
+
+export async function checkOutStaff() {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: "Unauthorized" };
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!profile) return { error: "Profile not found" };
+
+    const today = format(new Date(), "yyyy-MM-dd");
+    const now = format(new Date(), "HH:mm:ss");
+
+    const { data: existing } = await supabase
+      .from("attendance")
+      .select("*")
+      .eq("staff_id", profile.id)
+      .eq("date", today)
+      .maybeSingle();
+
+    if (!existing?.check_in_time) {
+      return { error: "Check in before checking out" };
+    }
+    if (existing.check_out_time) {
+      return { error: "Already checked out today" };
+    }
+
+    const { error } = await supabase
+      .from("attendance")
+      .update({
+        check_out_time: now,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existing.id);
+
+    if (error) return { error: error.message };
+
+    revalidatePath("/my-attendance");
+    revalidatePath("/attendance");
+    return { success: true, checkOutTime: now };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Check-out failed" };
+  }
+}

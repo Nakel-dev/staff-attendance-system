@@ -54,7 +54,7 @@ export default async function AdminLayout({
           notifications={notifications || []}
           profilePath="/profile"
         />
-        <main className="p-4 md:p-6 pb-20 md:pb-6">{children}</main>
+        <main className="p-4 md:p-6 pb-24 md:pb-6 max-w-7xl mx-auto w-full">{children}</main>
       </div>
       <MobileNav role="admin" pendingLeaves={pendingLeaves || 0} />
     </div>

@@ -28,7 +28,8 @@ const adminLinks: NavLink[] = [
   { href: "/dashboard", label: "Home", icon: LayoutDashboard },
   { href: "/staff", label: "Staff", icon: Users },
   { href: "/attendance", label: "Attendance", icon: ClipboardCheck },
-  { href: "/leaves", label: "Leaves", icon: CalendarDays, badge: true },
+  { href: "/leaves", label: "Team", icon: CalendarDays, badge: true },
+  { href: "/my-leaves", label: "My Leave", icon: CalendarDays },
   { href: "/reports", label: "Reports", icon: BarChart3 },
 ];
 
@@ -42,8 +43,8 @@ export function MobileNav({ role, pendingLeaves = 0 }: MobileNavProps) {
   const links = role === "admin" ? adminLinks : staffLinks;
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t bg-background no-print">
-      <div className="flex items-center justify-around py-2">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 no-print pb-[env(safe-area-inset-bottom)]">
+      <div className="flex items-center justify-around py-1.5 px-1 overflow-x-auto">
         {links.map((link) => {
           const Icon = link.icon;
           const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
@@ -53,8 +54,8 @@ export function MobileNav({ role, pendingLeaves = 0 }: MobileNavProps) {
               key={link.href}
               href={link.href}
               className={cn(
-                "flex flex-col items-center gap-1 px-2 py-1 text-xs relative",
-                isActive ? "text-primary" : "text-muted-foreground"
+                "flex flex-col items-center gap-0.5 px-1.5 py-1 text-[10px] sm:text-xs relative min-w-[56px] shrink-0",
+                isActive ? "text-primary font-medium" : "text-muted-foreground"
               )}
             >
               <Icon className="h-5 w-5" />

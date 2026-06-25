@@ -39,6 +39,7 @@ const adminLinks: NavLink[] = [
   { href: "/staff", label: "Staff Management", icon: Users },
   { href: "/attendance", label: "Mark Attendance", icon: ClipboardCheck },
   { href: "/leaves", label: "Leave Requests", icon: CalendarDays, badge: true },
+  { href: "/my-leaves", label: "My Leaves", icon: CalendarDays },
   { href: "/reports", label: "Reports", icon: BarChart3 },
 ];
 
