@@ -1,6 +1,6 @@
 /**
- * Seed script for Staff Attendance Management System
- * Run: npx ts-node --compiler-options '{"module":"CommonJS"}' scripts/seed.ts
+ * Seed script for AttendPro (multi-tenant)
+ * Run: npm run seed
  */
 import * as dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
@@ -20,15 +20,21 @@ const admin = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+const DEMO_ORG = {
+  name: "Demo Organization",
+  slug: "demo-org",
+  inviteCode: "DEMO2026",
+};
+
 const STAFF_MEMBERS = [
-  { name: "Dr. Emily Chen", email: "emily.chen@school.com", department: "Sciences", password: "Staff1234!" },
-  { name: "Mr. David Miller", email: "david.miller@school.com", department: "Mathematics", password: "Staff1234!" },
-  { name: "Ms. Rachel Green", email: "rachel.green@school.com", department: "English", password: "Staff1234!" },
-  { name: "Mr. James Wilson", email: "james.wilson@school.com", department: "Arts", password: "Staff1234!" },
-  { name: "Coach Mark Taylor", email: "mark.taylor@school.com", department: "Physical Education", password: "Staff1234!" },
-  { name: "Ms. Lisa Park", email: "lisa.park@school.com", department: "ICT", password: "Staff1234!" },
-  { name: "Mr. Robert Hughes", email: "robert.hughes@school.com", department: "History", password: "Staff1234!" },
-  { name: "Mrs. Anna Brooks", email: "anna.brooks@school.com", department: "Library", password: "Staff1234!" },
+  { name: "Emily Chen", email: "emily.chen@demo.com", department: "Engineering", password: "Staff1234!" },
+  { name: "David Miller", email: "david.miller@demo.com", department: "Operations", password: "Staff1234!" },
+  { name: "Rachel Green", email: "rachel.green@demo.com", department: "Marketing", password: "Staff1234!" },
+  { name: "James Wilson", email: "james.wilson@demo.com", department: "Sales", password: "Staff1234!" },
+  { name: "Mark Taylor", email: "mark.taylor@demo.com", department: "Customer Support", password: "Staff1234!" },
+  { name: "Lisa Park", email: "lisa.park@demo.com", department: "Human Resources", password: "Staff1234!" },
+  { name: "Robert Hughes", email: "robert.hughes@demo.com", department: "Finance", password: "Staff1234!" },
+  { name: "Anna Brooks", email: "anna.brooks@demo.com", department: "Administration", password: "Staff1234!" },
 ];
 
 const ATTENDANCE_STATUSES = ["present", "present", "present", "present", "present", "present", "present", "present", "absent", "late", "half-day"] as const;
@@ -43,7 +49,35 @@ function randomTime(hour: number) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
 }
 
+async function getOrCreateOrganization() {
+  const { data: existing } = await admin
+    .from("organizations")
+    .select("id, invite_code")
+    .eq("slug", DEMO_ORG.slug)
+    .maybeSingle();
+
+  if (existing) {
+    console.log(`  Organization exists: ${DEMO_ORG.name} (invite: ${existing.invite_code})`);
+    return existing.id;
+  }
+
+  const { data: org, error } = await admin
+    .from("organizations")
+    .insert({
+      name: DEMO_ORG.name,
+      slug: DEMO_ORG.slug,
+      invite_code: DEMO_ORG.inviteCode,
+    })
+    .select("id, invite_code")
+    .single();
+
+  if (error) throw error;
+  console.log(`  Created organization: ${DEMO_ORG.name} (invite: ${org.invite_code})`);
+  return org.id;
+}
+
 async function createUserWithProfile(
+  organizationId: string,
   email: string,
   password: string,
   fullName: string,
@@ -75,6 +109,10 @@ async function createUserWithProfile(
     .maybeSingle();
 
   if (existingProfile) {
+    await admin
+      .from("profiles")
+      .update({ organization_id: organizationId })
+      .eq("id", existingProfile.id);
     console.log(`  Profile exists: ${fullName}`);
     return existingProfile.id;
   }
@@ -83,6 +121,7 @@ async function createUserWithProfile(
     .from("profiles")
     .insert({
       user_id: userId,
+      organization_id: organizationId,
       full_name: fullName,
       email,
       department,
@@ -101,9 +140,13 @@ async function createUserWithProfile(
 async function seed() {
   console.log("Starting seed...\n");
 
-  console.log("Creating admin...");
+  console.log("Ensuring demo organization...");
+  const organizationId = await getOrCreateOrganization();
+
+  console.log("\nCreating admin...");
   const adminProfileId = await createUserWithProfile(
-    "admin@school.com",
+    organizationId,
+    "admin@demo.com",
     "Admin1234!",
     "Sarah Johnson",
     "Administration",
@@ -114,6 +157,7 @@ async function seed() {
   const staffIds: string[] = [];
   for (const staff of STAFF_MEMBERS) {
     const id = await createUserWithProfile(
+      organizationId,
       staff.email,
       staff.password,
       staff.name,
@@ -220,8 +264,10 @@ async function seed() {
   console.log("  Created 5 leave records");
 
   console.log("\nSeed completed successfully!");
+  console.log("\nDemo organization:", DEMO_ORG.name);
+  console.log("Staff invite code:", DEMO_ORG.inviteCode);
   console.log("\nLogin credentials:");
-  console.log("  Admin: admin@school.com / Admin1234!");
+  console.log("  Admin: admin@demo.com / Admin1234!");
   console.log("  Staff: [staff-email] / Staff1234!");
 }
 

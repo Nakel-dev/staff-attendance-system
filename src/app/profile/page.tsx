@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { getProfileWithOrganization, getOrganizationDisplayName, getAuthenticatedProfile } from "@/lib/supabase/profile";
+import { AUTH_PATH } from "@/constants";
 import { redirect } from "next/navigation";
 import { StaffCard } from "@/components/staff/StaffCard";
 import { StaffForm } from "@/components/staff/StaffForm";
@@ -10,15 +12,14 @@ import { Header } from "@/components/layout/Header";
 export default async function ProfilePage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  if (!user) redirect(AUTH_PATH);
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("user_id", user.id)
-    .single();
+  const profile = await getAuthenticatedProfile(user.id);
 
-  if (!profile) redirect("/login");
+  if (!profile) redirect(AUTH_PATH);
+
+  const profileWithOrg = await getProfileWithOrganization(user.id);
+  const organizationName = getOrganizationDisplayName(profileWithOrg);
 
   const now = new Date();
   const month = now.getMonth() + 1;
@@ -64,6 +65,7 @@ export default async function ProfilePage() {
     <div className="min-h-screen bg-background">
       <Sidebar
         role={profile.role}
+        organizationName={organizationName}
         pendingLeaves={pendingLeaves || 0}
         profilePath="/profile"
       />

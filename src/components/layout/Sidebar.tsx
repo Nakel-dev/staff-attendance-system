@@ -10,17 +10,19 @@ import {
   BarChart3,
   LogOut,
   User,
+  Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { SCHOOL_NAME, SYSTEM_NAME } from "@/constants";
+import { APP_NAME, AUTH_PATH } from "@/constants";
 import { logout } from "@/lib/actions/notifications";
 import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 
 interface SidebarProps {
   role: "admin" | "staff";
+  organizationName: string;
   pendingLeaves?: number;
   profilePath?: string;
 }
@@ -45,14 +47,14 @@ const staffLinks: NavLink[] = [
   { href: "/my-leaves", label: "My Leaves", icon: CalendarDays },
 ];
 
-export function Sidebar({ role, pendingLeaves = 0, profilePath }: SidebarProps) {
+export function Sidebar({ role, organizationName, pendingLeaves = 0, profilePath }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const links = role === "admin" ? adminLinks : staffLinks;
 
   const handleLogout = async () => {
     await logout();
-    router.push("/login");
+    router.push(AUTH_PATH);
     router.refresh();
   };
 
@@ -61,12 +63,12 @@ export function Sidebar({ role, pendingLeaves = 0, profilePath }: SidebarProps) 
       <div className="flex flex-col flex-1 min-h-0">
         <div className="p-6">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg">
-              G
+            <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center text-primary-foreground">
+              <Building2 className="h-5 w-5" />
             </div>
-            <div>
-              <p className="font-semibold text-sm leading-tight">{SCHOOL_NAME}</p>
-              <p className="text-xs text-muted-foreground">{SYSTEM_NAME}</p>
+            <div className="min-w-0">
+              <p className="font-semibold text-sm leading-tight truncate">{organizationName}</p>
+              <p className="text-xs text-muted-foreground">{APP_NAME}</p>
             </div>
           </div>
         </div>

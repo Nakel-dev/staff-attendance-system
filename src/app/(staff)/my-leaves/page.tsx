@@ -2,14 +2,14 @@ import { createClient } from "@/lib/supabase/server";
 import { LeaveForm } from "@/components/leaves/LeaveForm";
 import { LeaveTable } from "@/components/leaves/LeaveTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { LEAVE_BALANCE } from "@/constants";
+import { LEAVE_BALANCE, AUTH_PATH } from "@/constants";
 import { calculateLeaveBalance } from "@/lib/utils/calculateStats";
 import { redirect } from "next/navigation";
 
 export default async function MyLeavesPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  if (!user) redirect(AUTH_PATH);
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -17,7 +17,7 @@ export default async function MyLeavesPage() {
     .eq("user_id", user.id)
     .single();
 
-  if (!profile) redirect("/login");
+  if (!profile) redirect(AUTH_PATH);
 
   const { data: leaves } = await supabase
     .from("leaves")

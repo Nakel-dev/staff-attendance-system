@@ -29,11 +29,13 @@ export async function createStaffMember(data: {
 
     const { data: adminProfile } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, organization_id")
       .eq("user_id", user.id)
       .single();
 
-    if (adminProfile?.role !== "admin") return { error: "Unauthorized" };
+    if (adminProfile?.role !== "admin" || !adminProfile.organization_id) {
+      return { error: "Unauthorized" };
+    }
 
     const password = generatePassword();
     const adminClient = createAdminClient();
@@ -48,6 +50,7 @@ export async function createStaffMember(data: {
 
     const { error: profileError } = await adminClient.from("profiles").insert({
       user_id: authUser.user.id,
+      organization_id: adminProfile.organization_id,
       full_name: data.full_name,
       email: data.email,
       phone: data.phone || null,

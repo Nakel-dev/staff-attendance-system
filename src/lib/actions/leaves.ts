@@ -1,25 +1,27 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import type { LeaveType } from "@/lib/types";
 
-async function notifyAdmins(title: string, message: string) {
-  const supabase = await createClient();
-  const { data: admins } = await supabase
+async function notifyAdmins(title: string, message: string, organizationId: string) {
+  const adminClient = createAdminClient();
+  const { data: admins } = await adminClient
     .from("profiles")
     .select("id")
     .eq("role", "admin")
-    .eq("is_active", true);
+    .eq("is_active", true)
+    .eq("organization_id", organizationId);
 
-  if (admins) {
+  if (admins?.length) {
     const notifications = admins.map((admin) => ({
       user_id: admin.id,
       title,
       message,
       type: "leave_request" as const,
     }));
-    await supabase.from("notifications").insert(notifications);
+    await adminClient.from("notifications").insert(notifications);
   }
 }
 
@@ -36,7 +38,7 @@ export async function applyForLeave(data: {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, full_name")
+      .select("id, full_name, organization_id")
       .eq("user_id", user.id)
       .single();
 
@@ -59,7 +61,8 @@ export async function applyForLeave(data: {
 
     await notifyAdmins(
       "New Leave Request",
-      `${profile.full_name} submitted a ${data.leave_type} leave request from ${data.start_date} to ${data.end_date}.`
+      `${profile.full_name} submitted a ${data.leave_type} leave request from ${data.start_date} to ${data.end_date}.`,
+      profile.organization_id
     );
 
     revalidatePath("/my-leaves");

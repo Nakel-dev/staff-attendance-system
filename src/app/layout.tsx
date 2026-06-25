@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
-import { SYSTEM_NAME } from "@/constants";
+import { APP_NAME, APP_TAGLINE } from "@/constants";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: SYSTEM_NAME,
-  description: "Staff Attendance Management System for schools and organizations",
+  title: APP_NAME,
+  description: APP_TAGLINE,
 };
 
 export default function RootLayout({

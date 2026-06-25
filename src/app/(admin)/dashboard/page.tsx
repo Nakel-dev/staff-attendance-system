@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getOrganizationInviteCode } from "@/lib/actions/auth";
 import { format } from "date-fns";
 import Link from "next/link";
 import { Users, UserCheck, UserX, Clock, CalendarOff, FileText } from "lucide-react";
@@ -6,6 +7,10 @@ import { StatsCard } from "@/components/dashboard/StatsCard";
 import { AttendanceChart } from "@/components/dashboard/AttendanceChart";
 import { TodayPieChart } from "@/components/dashboard/TodayPieChart";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
+import { InviteCodeCard } from "@/components/dashboard/InviteCodeCard";
+import { GettingStartedCard } from "@/components/dashboard/GettingStartedCard";
+import { Suspense } from "react";
+import { WelcomeBanner } from "@/components/auth/WelcomeBanner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +21,7 @@ import {
 export default async function DashboardPage() {
   const supabase = await createClient();
   const today = format(new Date(), "yyyy-MM-dd");
+  const inviteInfo = await getOrganizationInviteCode();
 
   const { data: activeStaff } = await supabase
     .from("profiles")
@@ -67,6 +73,9 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <Suspense fallback={null}>
+        <WelcomeBanner />
+      </Suspense>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
@@ -76,6 +85,21 @@ export default async function DashboardPage() {
           <Link href="/attendance">Mark Today&apos;s Attendance</Link>
         </Button>
       </div>
+
+      {"inviteCode" in inviteInfo && inviteInfo.inviteCode && inviteInfo.organizationName && (
+        <InviteCodeCard
+          inviteCode={inviteInfo.inviteCode}
+          organizationName={inviteInfo.organizationName}
+        />
+      )}
+
+      {totalStaff === 0 && (
+        <GettingStartedCard
+          inviteCode={
+            "inviteCode" in inviteInfo ? inviteInfo.inviteCode : undefined
+          }
+        />
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatsCard title="Total Active Staff" value={stats.totalStaff} icon={Users} />

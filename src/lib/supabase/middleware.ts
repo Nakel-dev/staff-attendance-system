@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { AUTH_PATH } from "@/constants";
 
 const ADMIN_ROUTES = [
   "/dashboard",
@@ -11,6 +12,7 @@ const ADMIN_ROUTES = [
 
 const STAFF_ROUTES = ["/my-attendance", "/my-leaves"];
 const SHARED_ROUTES = ["/profile"];
+const PUBLIC_ROUTES = ["/", AUTH_PATH, "/login", "/register"];
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -41,12 +43,13 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
-  const isAuthRoute = pathname === "/login";
-  const isPublicRoute = pathname === "/" || isAuthRoute;
+  const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
+  const isAuthRoute =
+    pathname === AUTH_PATH || pathname === "/login" || pathname === "/register";
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = AUTH_PATH;
     return NextResponse.redirect(url);
   }
 
@@ -57,10 +60,14 @@ export async function updateSession(request: NextRequest) {
       .eq("user_id", user.id)
       .single();
 
-    const url = request.nextUrl.clone();
-    url.pathname =
-      profile?.role === "admin" ? "/dashboard" : "/my-attendance";
-    return NextResponse.redirect(url);
+    if (profile?.role) {
+      const url = request.nextUrl.clone();
+      url.pathname =
+        profile.role === "admin" ? "/dashboard" : "/my-attendance";
+      return NextResponse.redirect(url);
+    }
+
+    return supabaseResponse;
   }
 
   if (user && !isPublicRoute) {
@@ -70,7 +77,14 @@ export async function updateSession(request: NextRequest) {
       .eq("user_id", user.id)
       .single();
 
-    const role = profile?.role;
+    if (!profile) {
+      const url = request.nextUrl.clone();
+      url.pathname = AUTH_PATH;
+      url.searchParams.set("error", "profile-not-found");
+      return NextResponse.redirect(url);
+    }
+
+    const role = profile.role;
 
     if (SHARED_ROUTES.some((r) => pathname.startsWith(r))) {
       return supabaseResponse;
@@ -92,7 +106,7 @@ export async function updateSession(request: NextRequest) {
   if (pathname === "/") {
     const url = request.nextUrl.clone();
     if (!user) {
-      url.pathname = "/login";
+      url.pathname = AUTH_PATH;
     } else {
       const { data: profile } = await supabase
         .from("profiles")

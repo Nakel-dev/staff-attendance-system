@@ -1,13 +1,13 @@
 export const DEPARTMENTS = [
   "Administration",
-  "Sciences",
-  "Mathematics",
-  "English",
-  "Arts",
-  "Physical Education",
-  "ICT",
-  "History",
-  "Library",
+  "Operations",
+  "Sales",
+  "Marketing",
+  "Engineering",
+  "Human Resources",
+  "Finance",
+  "Customer Support",
+  "General",
 ] as const;
 
 export const LEAVE_BALANCE = {
@@ -38,5 +38,8 @@ export const LEAVE_TYPE_LABELS: Record<string, string> = {
   unpaid: "Unpaid",
 };
 
-export const SYSTEM_NAME = "Staff Attendance Management System";
-export const SCHOOL_NAME = "Greenwood Academy";
+export const APP_NAME = "AttendPro";
+export const APP_TAGLINE = "Staff attendance for any organization";
+export const AUTH_PATH = "/auth";
+/** @deprecated Use APP_NAME */
+export const SYSTEM_NAME = APP_NAME;

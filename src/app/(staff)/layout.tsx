@@ -1,8 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
+import { getProfileWithOrganization, getOrganizationDisplayName, getAuthenticatedProfile } from "@/lib/supabase/profile";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Header } from "@/components/layout/Header";
 import { redirect } from "next/navigation";
+import { AUTH_PATH } from "@/constants";
 
 export default async function StaffLayout({
   children,
@@ -14,15 +16,16 @@ export default async function StaffLayout({
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) redirect("/login");
+  if (!user) redirect(AUTH_PATH);
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("user_id", user.id)
-    .single();
+  const profile = await getAuthenticatedProfile(user.id);
 
-  if (!profile || profile.role !== "staff") redirect("/dashboard");
+  if (!profile) redirect(`${AUTH_PATH}?error=profile-not-found`);
+
+  if (profile.role !== "staff") redirect("/dashboard");
+
+  const profileWithOrg = await getProfileWithOrganization(user.id);
+  const organizationName = getOrganizationDisplayName(profileWithOrg);
 
   const { data: notifications } = await supabase
     .from("notifications")
@@ -33,7 +36,7 @@ export default async function StaffLayout({
 
   return (
     <div className="min-h-screen bg-background">
-      <Sidebar role="staff" profilePath="/profile" />
+      <Sidebar role="staff" organizationName={organizationName} profilePath="/profile" />
       <div className="md:pl-64">
         <Header
           title="Staff Portal"

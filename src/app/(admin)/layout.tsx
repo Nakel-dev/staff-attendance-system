@@ -1,8 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
+import { getProfileWithOrganization, getOrganizationDisplayName, getAuthenticatedProfile } from "@/lib/supabase/profile";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Header } from "@/components/layout/Header";
 import { redirect } from "next/navigation";
+import { AUTH_PATH } from "@/constants";
 
 export default async function AdminLayout({
   children,
@@ -14,15 +16,16 @@ export default async function AdminLayout({
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) redirect("/login");
+  if (!user) redirect(AUTH_PATH);
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("user_id", user.id)
-    .single();
+  const profile = await getAuthenticatedProfile(user.id);
 
-  if (!profile || profile.role !== "admin") redirect("/my-attendance");
+  if (!profile) redirect(`${AUTH_PATH}?error=profile-not-found`);
+
+  if (profile.role !== "admin") redirect("/my-attendance");
+
+  const profileWithOrg = await getProfileWithOrganization(user.id);
+  const organizationName = getOrganizationDisplayName(profileWithOrg);
 
   const { count: pendingLeaves } = await supabase
     .from("leaves")
@@ -40,6 +43,7 @@ export default async function AdminLayout({
     <div className="min-h-screen bg-background">
       <Sidebar
         role="admin"
+        organizationName={organizationName}
         pendingLeaves={pendingLeaves || 0}
         profilePath="/profile"
       />

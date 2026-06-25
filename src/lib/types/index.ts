@@ -9,9 +9,19 @@ export type NotificationType =
   | "attendance_marked"
   | "general";
 
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  invite_code: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Profile {
   id: string;
   user_id: string;
+  organization_id: string;
   full_name: string;
   email: string;
   phone?: string;
@@ -22,6 +32,7 @@ export interface Profile {
   date_joined: string;
   created_at: string;
   updated_at: string;
+  organizations?: Organization;
 }
 
 export interface Attendance {

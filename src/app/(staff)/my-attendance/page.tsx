@@ -2,11 +2,12 @@ import { createClient } from "@/lib/supabase/server";
 import { format } from "date-fns";
 import { MyAttendanceView } from "@/components/attendance/MyAttendanceView";
 import { redirect } from "next/navigation";
+import { AUTH_PATH } from "@/constants";
 
 export default async function MyAttendancePage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  if (!user) redirect(AUTH_PATH);
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -14,7 +15,7 @@ export default async function MyAttendancePage() {
     .eq("user_id", user.id)
     .single();
 
-  if (!profile) redirect("/login");
+  if (!profile) redirect(AUTH_PATH);
 
   const now = new Date();
   const monthStart = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
