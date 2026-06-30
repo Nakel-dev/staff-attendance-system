@@ -141,14 +141,11 @@ export async function updateAttendanceSecuritySettings(input: {
       return { error: "Geofence radius must be between 50 and 5000 meters" };
     }
 
-    const needsOffice =
-      input.requireGeofence ||
-      input.requireQrCode ||
-      input.attendanceMode === "standard" ||
-      input.attendanceMode === "strict";
-
-    if (needsOffice && (input.officeLatitude == null || input.officeLongitude == null)) {
-      return { error: "Office location is required when geofence or QR verification is enabled" };
+    if (
+      input.requireGeofence &&
+      (input.officeLatitude == null || input.officeLongitude == null)
+    ) {
+      return { error: "Office location is required when geofence verification is enabled" };
     }
 
     const admin = createAdminClient();

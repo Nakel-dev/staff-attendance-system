@@ -110,7 +110,7 @@ export function AttendanceSecuritySettings({ initial }: AttendanceSecuritySettin
     toast.success("Attendance security settings saved");
   };
 
-  const needsOfficeLocation = requireGeofence || requireQr;
+  const needsOfficeLocation = requireGeofence;
 
   return (
     <Card className="lg:col-span-2">

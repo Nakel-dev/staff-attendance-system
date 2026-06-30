@@ -84,8 +84,6 @@ export function resolveCheckInPolicy(org: OrganizationSecurityConfig): ResolvedC
     ? org.require_qr_code ?? defaults.requiresQr
     : defaults.requiresQr;
 
-  const needsOffice = requiresGeofence || requiresQr;
-
   return {
     mode,
     geofenceRadiusM: org.geofence_radius_m ?? 150,
@@ -96,7 +94,7 @@ export function resolveCheckInPolicy(org: OrganizationSecurityConfig): ResolvedC
     requiresGeofence,
     selfCheckInEnabled: defaults.selfCheckInEnabled,
     officeConfiguredForSecureMode:
-      !defaults.selfCheckInEnabled || !needsOffice || hasOfficeLocation,
+      !defaults.selfCheckInEnabled || !requiresGeofence || hasOfficeLocation,
   };
 }
 
