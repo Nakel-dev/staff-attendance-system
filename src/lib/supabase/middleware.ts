@@ -15,7 +15,7 @@ const ADMIN_ROUTES = [
 const STAFF_ROUTES = ["/my-attendance"];
 const SHARED_ROUTES = ["/profile", "/my-leaves"];
 const PUBLIC_ROUTES = ["/", AUTH_PATH, "/login", "/register", "/terms", "/privacy"];
-const AUTH_SUBROUTES = ["/auth/reset-password"];
+const AUTH_SUBROUTES = ["/auth/reset-password", "/auth/callback"];
 const RATE_LIMITED_PREFIXES = [AUTH_PATH, "/auth/reset-password"];
 
 function getClientIp(request: NextRequest): string {

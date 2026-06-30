@@ -37,6 +37,10 @@ export default function AuthPageClient() {
       );
       toast.error("Profile not found for this account");
     }
+    if (error === "reset-link-invalid") {
+      setAuthError("That password reset link is invalid or expired. Request a new reset email.");
+      toast.error("Reset link invalid or expired");
+    }
   }, [searchParams]);
 
   return (
