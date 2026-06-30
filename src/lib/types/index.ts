@@ -1,3 +1,5 @@
+export type AttendanceMode = "trust" | "standard" | "strict" | "admin_only";
+export type CheckInMethod = "self" | "admin" | "qr";
 export type Role = "admin" | "staff";
 export type AttendanceStatus = "present" | "absent" | "late" | "half-day";
 export type LeaveStatus = "pending" | "approved" | "rejected";
@@ -14,6 +16,12 @@ export interface Organization {
   name: string;
   slug: string;
   invite_code: string;
+  attendance_mode?: AttendanceMode;
+  office_latitude?: number | null;
+  office_longitude?: number | null;
+  geofence_radius_m?: number;
+  checkin_token?: string | null;
+  checkin_token_expires_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -28,6 +36,8 @@ export interface Profile {
   department: string;
   role: Role;
   avatar_url?: string;
+  face_enrolled_at?: string | null;
+  face_reference_photo_url?: string | null;
   is_active: boolean;
   date_joined: string;
   created_at: string;
@@ -42,6 +52,14 @@ export interface Attendance {
   status: AttendanceStatus;
   check_in_time?: string;
   check_out_time?: string;
+  check_in_latitude?: number | null;
+  check_in_longitude?: number | null;
+  check_in_photo_url?: string | null;
+  check_in_method?: CheckInMethod;
+  verification_flag?: boolean;
+  verification_note?: string | null;
+  face_match_score?: number | null;
+  face_match_passed?: boolean | null;
   note?: string;
   marked_by?: string;
   created_at: string;

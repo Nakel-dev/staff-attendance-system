@@ -9,6 +9,7 @@ import { TodayPieChart } from "@/components/dashboard/TodayPieChart";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { InviteCodeCard } from "@/components/dashboard/InviteCodeCard";
 import { GettingStartedCard } from "@/components/dashboard/GettingStartedCard";
+import { FlaggedCheckInsPanel } from "@/components/attendance/FlaggedCheckInsPanel";
 import { Suspense } from "react";
 import { WelcomeBanner } from "@/components/auth/WelcomeBanner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -100,6 +101,8 @@ export default async function DashboardPage() {
           }
         />
       )}
+
+      <FlaggedCheckInsPanel />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatsCard title="Total Active Staff" value={stats.totalStaff} icon={Users} />

@@ -1,9 +1,12 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import type { AttendanceStatus } from "@/lib/types";
 import type { AttendanceRowInput } from "@/lib/utils/calculateStats";
+import { isWithinGeofence } from "@/lib/utils/geofence";
+import { compareFaceDescriptors, isValidFaceDescriptor } from "@/lib/utils/faceMatch";
 import { format } from "date-fns";
 
 async function notifyStaff(staffId: string, title: string, message: string) {
@@ -14,6 +17,27 @@ async function notifyStaff(staffId: string, title: string, message: string) {
     message,
     type: "attendance_marked",
   });
+}
+
+async function notifyOrgAdmins(organizationId: string, title: string, message: string) {
+  const admin = createAdminClient();
+  const { data: admins } = await admin
+    .from("profiles")
+    .select("user_id")
+    .eq("organization_id", organizationId)
+    .eq("role", "admin")
+    .eq("is_active", true);
+
+  if (!admins?.length) return;
+
+  await admin.from("notifications").insert(
+    admins.map((adminProfile) => ({
+      user_id: adminProfile.user_id,
+      title,
+      message,
+      type: "general",
+    }))
+  );
 }
 
 export async function saveAttendanceBatch(
@@ -41,6 +65,7 @@ export async function saveAttendanceBatch(
       check_out_time: row.check_out_time || null,
       note: row.note || null,
       marked_by: profile.role === "admin" ? profile.id : null,
+      check_in_method: profile.role === "admin" ? "admin" : "self",
       updated_at: new Date().toISOString(),
     }));
 
@@ -69,7 +94,13 @@ export async function saveAttendanceBatch(
   }
 }
 
-export async function checkInStaff() {
+export async function checkInStaff(input?: {
+  latitude?: number;
+  longitude?: number;
+  photoPath?: string;
+  qrToken?: string;
+  faceDescriptor?: number[];
+}) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -77,11 +108,28 @@ export async function checkInStaff() {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id")
+      .select("id, full_name, organization_id, face_descriptor, face_enrolled_at")
       .eq("user_id", user.id)
       .single();
 
-    if (!profile) return { error: "Profile not found" };
+    if (!profile?.organization_id) return { error: "Profile not found" };
+
+    const admin = createAdminClient();
+    const { data: org } = await admin
+      .from("organizations")
+      .select(
+        "attendance_mode, office_latitude, office_longitude, geofence_radius_m, checkin_token, checkin_token_expires_at"
+      )
+      .eq("id", profile.organization_id)
+      .single();
+
+    if (!org) return { error: "Organization not found" };
+
+    const mode = org.attendance_mode || "trust";
+
+    if (mode === "admin_only") {
+      return { error: "Self check-in is disabled. Your manager must mark attendance." };
+    }
 
     const today = format(new Date(), "yyyy-MM-dd");
     const now = format(new Date(), "HH:mm:ss");
@@ -97,12 +145,112 @@ export async function checkInStaff() {
       return { error: "Already checked in today" };
     }
 
+    const requiresPhoto = mode === "standard" || mode === "strict";
+    const requiresLocation = mode === "standard" || mode === "strict";
+    const requiresQr = mode === "strict";
+    const requiresFaceMatch = mode === "standard" || mode === "strict";
+    let faceMatchScore: number | null = null;
+    let faceMatchPassed: boolean | null = null;
+
+    if (requiresFaceMatch) {
+      if (!profile.face_enrolled_at || !profile.face_descriptor) {
+        return {
+          error: "Face enrollment required. Open Profile and register your face before checking in.",
+        };
+      }
+      if (!input?.faceDescriptor || !isValidFaceDescriptor(input.faceDescriptor)) {
+        return { error: "Face verification data is missing. Take a clear selfie and try again." };
+      }
+      const faceResult = compareFaceDescriptors(
+        profile.face_descriptor as number[],
+        input.faceDescriptor
+      );
+      if (!faceResult.passed) {
+        return {
+          error: "Face does not match your enrolled profile. You cannot check in for someone else.",
+        };
+      }
+      faceMatchScore = faceResult.distance;
+      faceMatchPassed = true;
+    }
+
+    if (requiresPhoto && !input?.photoPath) {
+      return { error: "A check-in photo is required" };
+    }
+
+    if (requiresLocation) {
+      if (input?.latitude == null || input?.longitude == null) {
+        return { error: "Location access is required to check in" };
+      }
+      if (org.office_latitude == null || org.office_longitude == null) {
+        return { error: "Office location is not configured. Contact your administrator." };
+      }
+      const radius = org.geofence_radius_m ?? 150;
+      if (
+        !isWithinGeofence(
+          input.latitude,
+          input.longitude,
+          org.office_latitude,
+          org.office_longitude,
+          radius
+        )
+      ) {
+        return {
+          error: `You must be within ${radius}m of the office to check in`,
+        };
+      }
+    }
+
+    if (requiresQr) {
+      const token = input?.qrToken?.trim().toUpperCase();
+      if (!token) {
+        return { error: "Scan the reception QR code or enter the desk code shown at the office" };
+      }
+      const expired =
+        !org.checkin_token_expires_at ||
+        new Date(org.checkin_token_expires_at).getTime() <= Date.now();
+      if (expired || token !== org.checkin_token) {
+        return { error: "Invalid or expired desk code. Ask your manager for the current code." };
+      }
+    }
+
+    let verificationFlag = false;
+    let verificationNote: string | null = null;
+
+    if (mode === "trust" && input?.latitude != null && input?.longitude != null) {
+      if (org.office_latitude != null && org.office_longitude != null) {
+        const radius = org.geofence_radius_m ?? 150;
+        if (
+          !isWithinGeofence(
+            input.latitude,
+            input.longitude,
+            org.office_latitude,
+            org.office_longitude,
+            radius
+          )
+        ) {
+          verificationFlag = true;
+          verificationNote = "Check-in recorded outside office geofence (trust mode)";
+        }
+      }
+    }
+
+    const checkInMethod = requiresQr ? "qr" : "self";
+
     const { error } = await supabase.from("attendance").upsert(
       {
         staff_id: profile.id,
         date: today,
         status: "present" as AttendanceStatus,
         check_in_time: now,
+        check_in_latitude: input?.latitude ?? null,
+        check_in_longitude: input?.longitude ?? null,
+        check_in_photo_url: input?.photoPath ?? null,
+        check_in_method: checkInMethod,
+        verification_flag: verificationFlag,
+        verification_note: verificationNote,
+        face_match_score: faceMatchScore,
+        face_match_passed: faceMatchPassed,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "staff_id,date" }
@@ -110,9 +258,18 @@ export async function checkInStaff() {
 
     if (error) return { error: error.message };
 
+    if (verificationFlag) {
+      await notifyOrgAdmins(
+        profile.organization_id,
+        "Flagged check-in",
+        `${profile.full_name} checked in with a verification flag: ${verificationNote}`
+      );
+    }
+
     revalidatePath("/my-attendance");
     revalidatePath("/attendance");
-    return { success: true, checkInTime: now };
+    revalidatePath("/dashboard");
+    return { success: true, checkInTime: now, flagged: verificationFlag };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Check-in failed" };
   }
@@ -164,5 +321,104 @@ export async function checkOutStaff() {
     return { success: true, checkOutTime: now };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Check-out failed" };
+  }
+}
+
+export async function getFlaggedCheckIns(limit = 10) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: "Unauthorized" };
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role, organization_id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (profile?.role !== "admin" || !profile.organization_id) {
+      return { error: "Unauthorized" };
+    }
+
+    const { data: staffInOrg } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("organization_id", profile.organization_id);
+
+    const staffIds = staffInOrg?.map((s) => s.id) || [];
+    if (staffIds.length === 0) return { records: [] };
+
+    const { data: records, error } = await supabase
+      .from("attendance")
+      .select("*, profiles(*)")
+      .eq("verification_flag", true)
+      .in("staff_id", staffIds)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (error) return { error: error.message };
+    return { records: records || [] };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Failed to load flagged check-ins" };
+  }
+}
+
+export async function clearVerificationFlag(attendanceId: string) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: "Unauthorized" };
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role, organization_id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (profile?.role !== "admin") return { error: "Unauthorized" };
+
+    const { data: record } = await supabase
+      .from("attendance")
+      .select("staff_id, profiles(organization_id)")
+      .eq("id", attendanceId)
+      .single();
+
+    const staffOrg = (record?.profiles as { organization_id?: string } | null)?.organization_id;
+    if (staffOrg !== profile.organization_id) return { error: "Unauthorized" };
+
+    const { error } = await supabase
+      .from("attendance")
+      .update({
+        verification_flag: false,
+        verification_note: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", attendanceId);
+
+    if (error) return { error: error.message };
+
+    revalidatePath("/dashboard");
+    revalidatePath("/attendance");
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Failed to clear flag" };
+  }
+}
+
+export async function getCheckInPhotoSignedUrl(photoPath: string) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: "Unauthorized" };
+
+    const admin = createAdminClient();
+    const { data, error } = await admin.storage
+      .from("check-in-photos")
+      .createSignedUrl(photoPath, 3600);
+
+    if (error || !data?.signedUrl) return { error: "Could not load photo" };
+    return { url: data.signedUrl };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not load photo" };
   }
 }

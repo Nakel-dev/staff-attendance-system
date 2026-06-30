@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AttendanceSecuritySettings } from "@/components/settings/AttendanceSecuritySettings";
 import { LEAVE_BALANCE } from "@/constants";
 
 interface OrganizationSettingsProps {
@@ -17,6 +18,10 @@ interface OrganizationSettingsProps {
     invite_code: string;
     slug: string;
     created_at: string;
+    attendance_mode?: string | null;
+    office_latitude?: number | null;
+    office_longitude?: number | null;
+    geofence_radius_m?: number | null;
   };
 }
 
@@ -111,6 +116,15 @@ export function OrganizationSettings({ organization }: OrganizationSettingsProps
             </div>
           </CardContent>
         </Card>
+
+        <AttendanceSecuritySettings
+          initial={{
+            attendance_mode: organization.attendance_mode,
+            office_latitude: organization.office_latitude,
+            office_longitude: organization.office_longitude,
+            geofence_radius_m: organization.geofence_radius_m,
+          }}
+        />
 
         <Card className="lg:col-span-2">
           <CardHeader>

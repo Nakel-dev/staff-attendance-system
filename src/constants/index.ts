@@ -38,8 +38,21 @@ export const LEAVE_TYPE_LABELS: Record<string, string> = {
   unpaid: "Unpaid",
 };
 
+export const ATTENDANCE_MODE_LABELS: Record<string, string> = {
+  trust: "Trust — self check-in, no location or photo",
+  standard: "Standard — geofence + selfie + face match",
+  strict: "Strict — geofence + face match + scan reception QR code",
+  admin_only: "Admin only — manager marks attendance manually",
+};
+
+export const ATTENDANCE_MODES = ["trust", "standard", "strict", "admin_only"] as const;
+
 export const APP_NAME = "AttendPro";
 export const APP_TAGLINE = "Staff attendance for any organization";
 export const AUTH_PATH = "/auth";
+
+export function getHomePath(role: "admin" | "staff") {
+  return role === "admin" ? "/dashboard" : "/my-attendance";
+}
 /** @deprecated Use APP_NAME */
 export const SYSTEM_NAME = APP_NAME;

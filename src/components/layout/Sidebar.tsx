@@ -16,7 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { APP_NAME, AUTH_PATH } from "@/constants";
+import { APP_NAME, AUTH_PATH, getHomePath } from "@/constants";
 import { logout } from "@/lib/actions/notifications";
 import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
@@ -54,6 +54,7 @@ export function Sidebar({ role, organizationName, pendingLeaves = 0, profilePath
   const pathname = usePathname();
   const router = useRouter();
   const links = role === "admin" ? adminLinks : staffLinks;
+  const homeHref = getHomePath(role);
 
   const handleLogout = async () => {
     await logout();
@@ -65,15 +66,19 @@ export function Sidebar({ role, organizationName, pendingLeaves = 0, profilePath
     <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 border-r bg-card no-print">
       <div className="flex flex-col flex-1 min-h-0">
         <div className="p-6">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center text-primary-foreground">
+          <Link
+            href={homeHref}
+            className="flex items-center gap-3 rounded-lg transition-opacity hover:opacity-80"
+            aria-label="Go to home"
+          >
+            <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center text-primary-foreground shrink-0">
               <Building2 className="h-5 w-5" />
             </div>
             <div className="min-w-0">
               <p className="font-semibold text-sm leading-tight truncate">{organizationName}</p>
               <p className="text-xs text-muted-foreground">{APP_NAME}</p>
             </div>
-          </div>
+          </Link>
         </div>
         <Separator />
         <nav className="flex-1 p-4 space-y-1">

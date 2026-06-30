@@ -1,6 +1,7 @@
 "use client";
 
-import { Bell, LogOut, User } from "lucide-react";
+import Link from "next/link";
+import { Bell, Building2, LogOut, User } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { getInitials, timeAgo } from "@/lib/utils/formatDate";
 import { markAllNotificationsRead, markNotificationRead, logout } from "@/lib/actions/notifications";
 import type { Notification, Profile } from "@/lib/types";
-import { AUTH_PATH } from "@/constants";
+import { AUTH_PATH, getHomePath } from "@/constants";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -31,6 +32,7 @@ interface HeaderProps {
 export function Header({ title, profile, notifications, profilePath }: HeaderProps) {
   const router = useRouter();
   const unreadCount = notifications.filter((n) => !n.is_read).length;
+  const homeHref = getHomePath(profile.role);
 
   const handleLogout = async () => {
     await logout();
@@ -55,8 +57,17 @@ export function Header({ title, profile, notifications, profilePath }: HeaderPro
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 no-print">
-      <div className="flex h-16 items-center justify-between px-4 md:px-6">
-        <h1 className="text-lg md:text-xl font-semibold truncate">{title}</h1>
+      <div className="flex h-16 items-center justify-between px-4 md:px-6 gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link
+            href={homeHref}
+            className="md:hidden flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"
+            aria-label="Go to home"
+          >
+            <Building2 className="h-4 w-4" />
+          </Link>
+          <h1 className="text-lg md:text-xl font-semibold truncate">{title}</h1>
+        </div>
         <div className="flex items-center gap-2">
           <Popover>
             <PopoverTrigger asChild>
