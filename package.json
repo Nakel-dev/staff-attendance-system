@@ -14,6 +14,7 @@
     "lint": "next lint",
     "seed": "ts-node --transpile-only -r dotenv/config scripts/seed.ts",
     "migrate": "ts-node --transpile-only -r dotenv/config scripts/migrate.ts",
+    "migrate:secure": "ts-node --transpile-only -r dotenv/config scripts/apply-migrations.ts 005 006",
     "desktop:prepare": "npm run build && node scripts/prepare-standalone.js",
     "desktop:dev": "npm run desktop:prepare && electron desktop/main.cjs",
     "desktop:build": "npm run desktop:prepare && electron-builder --config electron-builder.json"
