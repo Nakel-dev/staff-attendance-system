@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LeaveForm } from "@/components/leaves/LeaveForm";
 import { LeaveTable } from "@/components/leaves/LeaveTable";
@@ -18,6 +18,10 @@ interface MyLeavesViewProps {
 export function MyLeavesView({ staffId, initialLeaves }: MyLeavesViewProps) {
   const router = useRouter();
   const [leaves, setLeaves] = useState(initialLeaves);
+
+  useEffect(() => {
+    setLeaves(initialLeaves);
+  }, [initialLeaves]);
 
   const handleLeaveSubmitted = (leave: Leave) => {
     setLeaves((prev) => [leave, ...prev]);
@@ -130,7 +134,7 @@ export function MyLeavesView({ staffId, initialLeaves }: MyLeavesViewProps) {
           <CardTitle>Leave Requests</CardTitle>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="pending">
+          <Tabs defaultValue="all">
             <TabsList className="w-full justify-start overflow-x-auto flex-nowrap h-auto p-1">
               <TabsTrigger value="pending" className="shrink-0">
                 Pending ({pendingCount})

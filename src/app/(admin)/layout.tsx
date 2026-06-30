@@ -1,10 +1,17 @@
 import { createClient } from "@/lib/supabase/server";
 import { getProfileWithOrganization, getOrganizationDisplayName, getAuthenticatedProfile } from "@/lib/supabase/profile";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { MobileNav } from "@/components/layout/MobileNav";
-import { Header } from "@/components/layout/Header";
+import { AppShell } from "@/components/layout/AppShell";
 import { redirect } from "next/navigation";
 import { AUTH_PATH } from "@/constants";
+
+const ADMIN_PAGE_TITLES: Record<string, string> = {
+  "/dashboard": "Dashboard",
+  "/staff": "Staff Management",
+  "/attendance": "Mark Attendance",
+  "/leaves": "Leave Requests",
+  "/reports": "Reports",
+  "/settings": "Settings",
+};
 
 export default async function AdminLayout({
   children,
@@ -40,22 +47,15 @@ export default async function AdminLayout({
     .limit(20);
 
   return (
-    <div className="min-h-screen bg-background">
-      <Sidebar
-        role="admin"
-        organizationName={organizationName}
-        pendingLeaves={pendingLeaves || 0}
-      />
-      <div className="md:pl-64">
-        <Header
-          title="Admin Portal"
-          profile={profile}
-          notifications={notifications || []}
-          profilePath="/profile"
-        />
-        <main className="p-4 md:p-6 pb-24 md:pb-6 max-w-7xl mx-auto w-full">{children}</main>
-      </div>
-      <MobileNav role="admin" pendingLeaves={pendingLeaves || 0} />
-    </div>
+    <AppShell
+      profile={profile}
+      organizationName={organizationName}
+      notifications={notifications || []}
+      pendingLeaves={pendingLeaves || 0}
+      pageTitles={ADMIN_PAGE_TITLES}
+      defaultTitle="Admin Portal"
+    >
+      {children}
+    </AppShell>
   );
 }

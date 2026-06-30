@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LeaveTable } from "@/components/leaves/LeaveTable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,6 +13,10 @@ interface AdminLeavesViewProps {
 export function AdminLeavesView({ initialLeaves }: AdminLeavesViewProps) {
   const router = useRouter();
   const [leaves, setLeaves] = useState(initialLeaves);
+
+  useEffect(() => {
+    setLeaves(initialLeaves);
+  }, [initialLeaves]);
 
   const pending = leaves.filter((leave) => leave.status === "pending");
   const approved = leaves.filter((leave) => leave.status === "approved");
@@ -33,7 +37,7 @@ export function AdminLeavesView({ initialLeaves }: AdminLeavesViewProps) {
           Review, approve, or reject staff leave applications
         </p>
       </div>
-      <Tabs defaultValue="pending">
+      <Tabs defaultValue="all">
         <TabsList className="w-full justify-start overflow-x-auto flex-nowrap h-auto p-1">
           <TabsTrigger value="pending" className="shrink-0">
             Pending ({pending.length})

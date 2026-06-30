@@ -91,22 +91,6 @@ export function Sidebar({ role, organizationName, pendingLeaves = 0 }: SidebarPr
                 key={link.href}
                 href={link.href}
                 prefetch
-                onClick={(event) => {
-                  if (
-                    event.defaultPrevented ||
-                    event.button !== 0 ||
-                    event.metaKey ||
-                    event.ctrlKey ||
-                    event.shiftKey ||
-                    event.altKey
-                  ) {
-                    return;
-                  }
-                  if (pathname !== link.href) {
-                    event.preventDefault();
-                    router.push(link.href);
-                  }
-                }}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   isActive

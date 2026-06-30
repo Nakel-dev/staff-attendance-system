@@ -6,7 +6,7 @@ import { MobileNav } from "@/components/layout/MobileNav";
 import { Header } from "@/components/layout/Header";
 import type { Notification, Profile } from "@/lib/types";
 
-const PAGE_TITLES: Record<string, string> = {
+const PORTAL_PAGE_TITLES: Record<string, string> = {
   "/my-attendance": "My Attendance",
   "/my-leaves": "My Leaves",
   "/profile": "My Profile",
@@ -17,6 +17,8 @@ interface AppShellProps {
   organizationName: string;
   notifications: Notification[];
   pendingLeaves?: number;
+  pageTitles?: Record<string, string>;
+  defaultTitle?: string;
   children: React.ReactNode;
 }
 
@@ -25,10 +27,15 @@ export function AppShell({
   organizationName,
   notifications,
   pendingLeaves = 0,
+  pageTitles = PORTAL_PAGE_TITLES,
+  defaultTitle = "AttendPro",
   children,
 }: AppShellProps) {
   const pathname = usePathname();
-  const title = PAGE_TITLES[pathname] ?? "AttendPro";
+  const title =
+    pageTitles[pathname] ??
+    Object.entries(pageTitles).find(([path]) => pathname.startsWith(`${path}/`))?.[1] ??
+    defaultTitle;
 
   return (
     <div className="min-h-screen bg-background">
