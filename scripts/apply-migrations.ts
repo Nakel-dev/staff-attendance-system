@@ -5,7 +5,10 @@
 import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
+import { fileURLToPath } from "url";
 import { Client } from "pg";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 dotenv.config({ path: ".env.local" });
 
@@ -24,7 +27,9 @@ if (!dbPassword) {
 }
 
 const projectRef = new URL(supabaseUrl).hostname.split(".")[0];
-const connectionString = `postgresql://postgres.${projectRef}:${encodeURIComponent(dbPassword)}@aws-0-us-east-1.pooler.supabase.com:6543/postgres`;
+const connectionString =
+  process.env.SUPABASE_DATABASE_URL ||
+  `postgresql://postgres.${projectRef}:${encodeURIComponent(dbPassword)}@aws-0-us-east-1.pooler.supabase.com:6543/postgres`;
 
 async function applyMigrations() {
   const migrationsDir = path.join(__dirname, "..", "supabase", "migrations");

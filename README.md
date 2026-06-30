@@ -58,14 +58,18 @@ npm run dev
 
 Open http://localhost:3000
 
-### Demo login (after seed)
+### Demo login (production & after seed)
 
 | Role | Email | Password |
 |------|-------|----------|
-| Admin | admin@demo.com | Admin1234! |
-| Staff | emily.chen@demo.com | Staff1234! |
+| Admin | admin@school.com | Admin1234! |
+| Staff | emily.chen@school.com | Staff1234! |
+
+After local seed, demo accounts use `@demo.com` emails (e.g. `admin@demo.com` / `Admin1234!`).
 
 Staff invite code: **DEMO2026**
+
+**Project report for submission:** [PROJECT_REPORT.md](./PROJECT_REPORT.md)
 
 ## Scripts
 
@@ -75,7 +79,7 @@ Staff invite code: **DEMO2026**
 | `npm run build` | Production build |
 | `npm run start` | Start production server |
 | `npm run seed` | Seed demo organization + staff |
-| `npm run migrate` | Apply SQL migrations (needs DB password) |
+| `npm run migrate:secure` | Apply secure check-in migrations 005–007 |
 | `npm run desktop:dev` | Run as desktop app (dev) |
 | `npm run desktop:build` | Build Windows EXE installer |
 
