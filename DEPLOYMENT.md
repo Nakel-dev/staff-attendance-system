@@ -27,11 +27,18 @@ Run in Supabase SQL Editor (in order):
 
 ## Supabase auth redirect
 
-Add to **Authentication → URL Configuration**:
+In **Authentication → URL Configuration**:
 
-```
-https://staff-attendance-system-tau.vercel.app/auth/reset-password
-```
+| Setting | Value |
+|---------|--------|
+| **Site URL** | `https://staff-attendance-system-tau.vercel.app` |
+| **Redirect URLs** | `https://staff-attendance-system-tau.vercel.app/**` |
+| | `https://staff-attendance-system-tau.vercel.app/auth/callback**` |
+| | `https://staff-attendance-system-tau.vercel.app/auth/reset-password` |
+
+Remove `http://localhost:3000` from Site URL and Redirect URLs for production testing.
+
+**Email rate limit:** Supabase free tier allows only a few auth emails per hour. If you see “email rate limit exceeded”, wait ~1 hour or configure custom SMTP under **Authentication → SMTP Settings**.
 
 ## Redeploy
 

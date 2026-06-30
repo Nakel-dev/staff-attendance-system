@@ -1,6 +1,7 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getPasswordResetAppUrl } from "@/lib/config/app-url";
 import { revalidatePath } from "next/cache";
 
 function slugify(name: string) {
@@ -235,20 +236,23 @@ export async function getOrganizationInviteCode() {
   }
 }
 
-function getAppUrl() {
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "http://localhost:3000";
+function mapAuthError(message: string) {
+  const lower = message.toLowerCase();
+  if (lower.includes("rate limit") || lower.includes("too many")) {
+    return "Too many reset emails were sent. Wait about 1 hour, then try again.";
+  }
+  return message;
 }
 
 export async function requestPasswordReset(email: string) {
   try {
     const { createClient } = await import("@/lib/supabase/server");
     const supabase = await createClient();
+    const appUrl = await getPasswordResetAppUrl();
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-      redirectTo: `${getAppUrl()}/auth/callback?next=/auth/reset-password`,
+      redirectTo: `${appUrl}/auth/callback?next=/auth/reset-password`,
     });
-    if (error) return { error: error.message };
+    if (error) return { error: mapAuthError(error.message) };
     return { success: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Failed to send reset email" };
