@@ -26,7 +26,6 @@ export function AppShell({
         role={profile.role}
         organizationName={organizationName}
         pendingLeaves={pendingLeaves}
-        profilePath="/profile"
       />
       <div className="md:pl-64 min-w-0">
         <Header

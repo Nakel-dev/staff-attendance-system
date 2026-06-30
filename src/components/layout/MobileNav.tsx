@@ -7,7 +7,7 @@ import {
   Users,
   ClipboardCheck,
   CalendarDays,
-  BarChart3,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
@@ -30,12 +30,13 @@ const adminLinks: NavLink[] = [
   { href: "/attendance", label: "Attendance", icon: ClipboardCheck },
   { href: "/leaves", label: "Team", icon: CalendarDays, badge: true },
   { href: "/my-leaves", label: "My Leave", icon: CalendarDays },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/profile", label: "Profile", icon: User },
 ];
 
 const staffLinks: NavLink[] = [
   { href: "/my-attendance", label: "Attendance", icon: ClipboardCheck },
   { href: "/my-leaves", label: "Leaves", icon: CalendarDays },
+  { href: "/profile", label: "Profile", icon: User },
 ];
 
 export function MobileNav({ role, pendingLeaves = 0 }: MobileNavProps) {

@@ -45,7 +45,6 @@ export default async function AdminLayout({
         role="admin"
         organizationName={organizationName}
         pendingLeaves={pendingLeaves || 0}
-        profilePath="/profile"
       />
       <div className="md:pl-64">
         <Header

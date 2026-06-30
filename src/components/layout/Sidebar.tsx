@@ -25,7 +25,6 @@ interface SidebarProps {
   role: "admin" | "staff";
   organizationName: string;
   pendingLeaves?: number;
-  profilePath?: string;
 }
 
 interface NavLink {
@@ -43,14 +42,16 @@ const adminLinks: NavLink[] = [
   { href: "/my-leaves", label: "My Leaves", icon: CalendarDays },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/profile", label: "Profile", icon: User },
 ];
 
 const staffLinks: NavLink[] = [
   { href: "/my-attendance", label: "My Attendance", icon: ClipboardCheck },
   { href: "/my-leaves", label: "My Leaves", icon: CalendarDays },
+  { href: "/profile", label: "Profile", icon: User },
 ];
 
-export function Sidebar({ role, organizationName, pendingLeaves = 0, profilePath }: SidebarProps) {
+export function Sidebar({ role, organizationName, pendingLeaves = 0 }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const links = role === "admin" ? adminLinks : staffLinks;
@@ -63,7 +64,7 @@ export function Sidebar({ role, organizationName, pendingLeaves = 0, profilePath
   };
 
   return (
-    <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 border-r bg-card no-print">
+    <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 z-30 border-r bg-card no-print">
       <div className="flex flex-col flex-1 min-h-0">
         <div className="p-6">
           <Link
@@ -109,16 +110,7 @@ export function Sidebar({ role, organizationName, pendingLeaves = 0, profilePath
           })}
         </nav>
         <Separator />
-        <div className="p-4 space-y-1">
-          {profilePath && (
-            <Link
-              href={profilePath}
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            >
-              <User className="h-4 w-4" />
-              Profile
-            </Link>
-          )}
+        <div className="p-4">
           <Button variant="ghost" className="w-full justify-start gap-3 px-3" onClick={handleLogout}>
             <LogOut className="h-4 w-4" />
             Logout

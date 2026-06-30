@@ -1,13 +1,23 @@
 import { createClient } from "@/lib/supabase/server";
-import { getProfileWithOrganization, getOrganizationDisplayName, getAuthenticatedProfile } from "@/lib/supabase/profile";
-import { AppShell } from "@/components/layout/AppShell";
-import { MyLeavesView } from "@/components/leaves/MyLeavesView";
+import {
+  getAuthenticatedProfile,
+  getOrganizationDisplayName,
+  getProfileWithOrganization,
+} from "@/lib/supabase/profile";
+import { PortalShell } from "@/components/layout/PortalShell";
 import { AUTH_PATH } from "@/constants";
 import { redirect } from "next/navigation";
 
-export default async function MyLeavesPage() {
+export default async function PortalLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   if (!user) redirect(AUTH_PATH);
 
   const profile = await getAuthenticatedProfile(user.id);
@@ -16,13 +26,7 @@ export default async function MyLeavesPage() {
   const profileWithOrg = await getProfileWithOrganization(user.id);
   const organizationName = getOrganizationDisplayName(profileWithOrg);
 
-  const { data: leaves } = await supabase
-    .from("leaves")
-    .select("*")
-    .eq("staff_id", profile.id)
-    .order("created_at", { ascending: false });
-
-  const { count: pendingTeamLeaves } = await supabase
+  const { count: pendingLeaves } = await supabase
     .from("leaves")
     .select("*", { count: "exact", head: true })
     .eq("status", "pending");
@@ -35,14 +39,13 @@ export default async function MyLeavesPage() {
     .limit(20);
 
   return (
-    <AppShell
-      title="My Leaves"
+    <PortalShell
       profile={profile}
       organizationName={organizationName}
       notifications={notifications || []}
-      pendingLeaves={pendingTeamLeaves || 0}
+      pendingLeaves={pendingLeaves || 0}
     >
-      <MyLeavesView staffId={profile.id} initialLeaves={leaves || []} />
-    </AppShell>
+      {children}
+    </PortalShell>
   );
 }

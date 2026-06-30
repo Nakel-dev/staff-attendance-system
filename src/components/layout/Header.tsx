@@ -132,9 +132,11 @@ export function Header({ title, profile, notifications, profilePath }: HeaderPro
               <DropdownMenuLabel>{profile.email}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {profilePath && (
-                <DropdownMenuItem onClick={() => router.push(profilePath)}>
-                  <User className="mr-2 h-4 w-4" />
-                  View Profile
+                <DropdownMenuItem asChild>
+                  <Link href={profilePath} className="flex items-center cursor-pointer">
+                    <User className="mr-2 h-4 w-4" />
+                    View Profile
+                  </Link>
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={handleLogout}>
