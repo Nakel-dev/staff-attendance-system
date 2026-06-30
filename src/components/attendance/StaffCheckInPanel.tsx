@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   AlertTriangle,
-  Camera,
   CheckCircle2,
   Loader2,
   LogIn,
@@ -24,9 +23,12 @@ import { ATTENDANCE_MODE_LABELS } from "@/constants";
 import { checkInStaff, checkOutStaff } from "@/lib/actions/attendance";
 import { getStaffCheckInPolicy } from "@/lib/actions/organization";
 import { createClient } from "@/lib/supabase/client";
-import { extractFaceDescriptorFromFile } from "@/lib/face/client";
 import { formatTime } from "@/lib/utils/formatDate";
 import { QrCheckInScanner } from "@/components/attendance/QrCheckInScanner";
+import {
+  VideoVerificationCapture,
+  type VideoVerificationResult,
+} from "@/components/attendance/VideoVerificationCapture";
 import type { Attendance, AttendanceMode } from "@/lib/types";
 
 interface CheckInPolicy {
@@ -34,6 +36,7 @@ interface CheckInPolicy {
   geofenceRadiusM: number;
   hasOfficeLocation: boolean;
   requiresPhoto: boolean;
+  requiresVideo: boolean;
   requiresQr: boolean;
   requiresFaceMatch: boolean;
   faceEnrolled: boolean;
@@ -68,15 +71,13 @@ function getLocation(): Promise<{ latitude: number; longitude: number }> {
 
 export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
   const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [localTodayRecord, setLocalTodayRecord] = useState(todayRecord);
   const [policy, setPolicy] = useState<CheckInPolicy | null>(null);
   const [loadingPolicy, setLoadingPolicy] = useState(true);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [qrToken, setQrToken] = useState("");
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [verification, setVerification] = useState<VideoVerificationResult | null>(null);
   const [locationStatus, setLocationStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -102,24 +103,16 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
     };
   }, []);
 
-  const uploadPhoto = useCallback(async (file: File, userId: string) => {
+  const uploadVideo = useCallback(async (file: Blob, userId: string) => {
     const supabase = createClient();
-    const ext = file.type.split("/")[1] || "jpg";
-    const path = `${userId}/${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("check-in-photos").upload(path, file, {
-      contentType: file.type,
+    const path = `${userId}/checkin-${Date.now()}.webm`;
+    const { error } = await supabase.storage.from("check-in-videos").upload(path, file, {
+      contentType: file.type || "video/webm",
       upsert: false,
     });
     if (error) throw new Error(error.message);
     return path;
   }, []);
-
-  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
-  };
 
   const handleCheckIn = async () => {
     if (!policy) return;
@@ -138,18 +131,14 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
 
       let latitude: number | undefined;
       let longitude: number | undefined;
-      let photoPath: string | undefined;
-      let faceDescriptor: number[] | undefined;
+      let videoPath: string | undefined;
 
-      if (policy.requiresPhoto) {
-        if (!photoFile) {
-          toast.error("Take a selfie before checking in");
+      if (policy.requiresVideo) {
+        if (!verification) {
+          toast.error("Complete the video liveness verification first");
           return;
         }
-        if (policy.requiresFaceMatch) {
-          faceDescriptor = await extractFaceDescriptorFromFile(photoFile);
-        }
-        photoPath = await uploadPhoto(photoFile, user.id);
+        videoPath = await uploadVideo(verification.videoBlob, user.id);
       }
 
       if (policy.requiresQr && !qrToken.trim()) {
@@ -191,12 +180,14 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
       const result = await checkInStaff({
         latitude,
         longitude,
-        photoPath,
+        videoPath,
         qrToken: policy.requiresQr ? qrToken : undefined,
-        faceDescriptor,
+        faceDescriptor: verification?.faceDescriptor,
+        frameDescriptors: verification?.frameDescriptors,
+        motionScore: verification?.motionScore,
       });
 
-      if (result.error) {
+      if ("error" in result) {
         setLocalTodayRecord(todayRecord);
         toast.error(result.error);
         return;
@@ -332,29 +323,21 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
         ) : (
           policy?.selfCheckInEnabled && (
             <div className="space-y-4">
-              {(policy.requiresPhoto || policy.mode === "trust") && policy.requiresPhoto && (
-                <div className="space-y-2">
-                  <Label htmlFor="checkin-photo" className="flex items-center gap-2">
-                    <Camera className="h-4 w-4" />
-                    Selfie + face match
-                  </Label>
-                  <Input
-                    ref={fileInputRef}
-                    id="checkin-photo"
-                    type="file"
-                    accept="image/*"
-                    capture="user"
-                    onChange={handlePhotoChange}
-                  />
-                  {photoPreview && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={photoPreview}
-                      alt="Check-in preview"
-                      className="h-32 w-32 rounded-lg border object-cover"
-                    />
-                  )}
-                </div>
+              {policy.requiresVideo && (
+                <VideoVerificationCapture
+                  label="OPay-style video verification"
+                  hint="Record a 3-second clip and move your head slowly. Static photos are rejected."
+                  disabled={isCheckingIn}
+                  onVerified={(result) => setVerification(result)}
+                />
+              )}
+
+              {verification?.previewUrl && (
+                <video
+                  src={verification.previewUrl}
+                  controls
+                  className="h-32 w-full max-w-sm rounded-lg border"
+                />
               )}
 
               {policy.requiresQr && (
@@ -394,6 +377,7 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
                   isCheckingIn ||
                   !policy.officeConfiguredForSecureMode ||
                   (policy.requiresFaceMatch && !policy.faceEnrolled) ||
+                  (policy.requiresVideo && !verification) ||
                   (policy.requiresQr && !qrToken.trim())
                 }
                 size="lg"

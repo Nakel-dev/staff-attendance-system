@@ -7,6 +7,11 @@ import type { AttendanceStatus } from "@/lib/types";
 import type { AttendanceRowInput } from "@/lib/utils/calculateStats";
 import { isWithinGeofence } from "@/lib/utils/geofence";
 import { compareFaceDescriptors, isValidFaceDescriptor } from "@/lib/utils/faceMatch";
+import { validateLivenessFrames } from "@/lib/face/liveness";
+import { checkInInputSchema } from "@/lib/security/validation";
+import { writeAuditLog } from "@/lib/actions/audit";
+import { logError } from "@/lib/logging/logger";
+import { toClientError } from "@/lib/errors/app-error";
 import { format } from "date-fns";
 
 async function notifyStaff(staffId: string, title: string, message: string) {
@@ -98,10 +103,14 @@ export async function checkInStaff(input?: {
   latitude?: number;
   longitude?: number;
   photoPath?: string;
+  videoPath?: string;
   qrToken?: string;
   faceDescriptor?: number[];
+  frameDescriptors?: number[][];
+  motionScore?: number;
 }) {
   try {
+    const parsed = input ? checkInInputSchema.parse(input) : undefined;
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { error: "Unauthorized" };
@@ -145,12 +154,29 @@ export async function checkInStaff(input?: {
       return { error: "Already checked in today" };
     }
 
-    const requiresPhoto = mode === "standard" || mode === "strict";
+    const requiresVideo = mode === "standard" || mode === "strict";
     const requiresLocation = mode === "standard" || mode === "strict";
     const requiresQr = mode === "strict";
     const requiresFaceMatch = mode === "standard" || mode === "strict";
     let faceMatchScore: number | null = null;
     let faceMatchPassed: boolean | null = null;
+    let livenessPassed: boolean | null = null;
+    let livenessScore: number | null = null;
+
+    if (requiresVideo) {
+      if (!parsed?.videoPath) {
+        return { error: "Video verification is required. Record the 3-second liveness clip." };
+      }
+      if (!parsed.frameDescriptors || parsed.motionScore == null) {
+        return { error: "Live video analysis data is missing. Please record again." };
+      }
+      const liveness = validateLivenessFrames(parsed.frameDescriptors);
+      if (!liveness.passed) {
+        return { error: liveness.reason || "Video liveness verification failed" };
+      }
+      livenessPassed = true;
+      livenessScore = liveness.motionScore;
+    }
 
     if (requiresFaceMatch) {
       if (!profile.face_enrolled_at || !profile.face_descriptor) {
@@ -158,12 +184,12 @@ export async function checkInStaff(input?: {
           error: "Face enrollment required. Open Profile and register your face before checking in.",
         };
       }
-      if (!input?.faceDescriptor || !isValidFaceDescriptor(input.faceDescriptor)) {
-        return { error: "Face verification data is missing. Take a clear selfie and try again." };
+      if (!parsed?.faceDescriptor || !isValidFaceDescriptor(parsed.faceDescriptor)) {
+        return { error: "Face verification data is missing. Record the video verification again." };
       }
       const faceResult = compareFaceDescriptors(
         profile.face_descriptor as number[],
-        input.faceDescriptor
+        parsed.faceDescriptor
       );
       if (!faceResult.passed) {
         return {
@@ -174,12 +200,8 @@ export async function checkInStaff(input?: {
       faceMatchPassed = true;
     }
 
-    if (requiresPhoto && !input?.photoPath) {
-      return { error: "A check-in photo is required" };
-    }
-
     if (requiresLocation) {
-      if (input?.latitude == null || input?.longitude == null) {
+      if (parsed?.latitude == null || parsed?.longitude == null) {
         return { error: "Location access is required to check in" };
       }
       if (org.office_latitude == null || org.office_longitude == null) {
@@ -188,8 +210,8 @@ export async function checkInStaff(input?: {
       const radius = org.geofence_radius_m ?? 150;
       if (
         !isWithinGeofence(
-          input.latitude,
-          input.longitude,
+          parsed.latitude,
+          parsed.longitude,
           org.office_latitude,
           org.office_longitude,
           radius
@@ -202,7 +224,7 @@ export async function checkInStaff(input?: {
     }
 
     if (requiresQr) {
-      const token = input?.qrToken?.trim().toUpperCase();
+      const token = parsed?.qrToken?.trim().toUpperCase();
       if (!token) {
         return { error: "Scan the reception QR code or enter the desk code shown at the office" };
       }
@@ -217,13 +239,13 @@ export async function checkInStaff(input?: {
     let verificationFlag = false;
     let verificationNote: string | null = null;
 
-    if (mode === "trust" && input?.latitude != null && input?.longitude != null) {
+    if (mode === "trust" && parsed?.latitude != null && parsed?.longitude != null) {
       if (org.office_latitude != null && org.office_longitude != null) {
         const radius = org.geofence_radius_m ?? 150;
         if (
           !isWithinGeofence(
-            input.latitude,
-            input.longitude,
+            parsed.latitude,
+            parsed.longitude,
             org.office_latitude,
             org.office_longitude,
             radius
@@ -243,14 +265,17 @@ export async function checkInStaff(input?: {
         date: today,
         status: "present" as AttendanceStatus,
         check_in_time: now,
-        check_in_latitude: input?.latitude ?? null,
-        check_in_longitude: input?.longitude ?? null,
-        check_in_photo_url: input?.photoPath ?? null,
+        check_in_latitude: parsed?.latitude ?? null,
+        check_in_longitude: parsed?.longitude ?? null,
+        check_in_photo_url: parsed?.photoPath ?? null,
+        check_in_video_url: parsed?.videoPath ?? null,
         check_in_method: checkInMethod,
         verification_flag: verificationFlag,
         verification_note: verificationNote,
         face_match_score: faceMatchScore,
         face_match_passed: faceMatchPassed,
+        liveness_passed: livenessPassed,
+        liveness_score: livenessScore,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "staff_id,date" }
@@ -266,12 +291,25 @@ export async function checkInStaff(input?: {
       );
     }
 
+    await writeAuditLog({
+      action: "check_in",
+      resourceType: "attendance",
+      resourceId: profile.id,
+      metadata: {
+        mode,
+        livenessPassed,
+        faceMatchPassed,
+        flagged: verificationFlag,
+      },
+    });
+
     revalidatePath("/my-attendance");
     revalidatePath("/attendance");
     revalidatePath("/dashboard");
     return { success: true, checkInTime: now, flagged: verificationFlag };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Check-in failed" };
+    logError("check_in_failed", { message: err instanceof Error ? err.message : "unknown" });
+    return toClientError(err);
   }
 }
 
@@ -411,6 +449,26 @@ export async function getCheckInPhotoSignedUrl(photoPath: string) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { error: "Unauthorized" };
 
+    const ownerFolder = photoPath.split("/")[0];
+    if (ownerFolder !== user.id) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, organization_id")
+        .eq("user_id", user.id)
+        .single();
+      if (profile?.role !== "admin") return { error: "Unauthorized" };
+
+      const adminClient = createAdminClient();
+      const { data: ownerProfile } = await adminClient
+        .from("profiles")
+        .select("organization_id")
+        .eq("user_id", ownerFolder)
+        .maybeSingle();
+      if (ownerProfile?.organization_id !== profile.organization_id) {
+        return { error: "Unauthorized" };
+      }
+    }
+
     const admin = createAdminClient();
     const { data, error } = await admin.storage
       .from("check-in-photos")
@@ -418,7 +476,7 @@ export async function getCheckInPhotoSignedUrl(photoPath: string) {
 
     if (error || !data?.signedUrl) return { error: "Could not load photo" };
     return { url: data.signedUrl };
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not load photo" };
+  } catch {
+    return { error: "Could not load photo" };
   }
 }

@@ -14,7 +14,8 @@
     "lint": "next lint",
     "seed": "ts-node --transpile-only -r dotenv/config scripts/seed.ts",
     "migrate": "ts-node --transpile-only -r dotenv/config scripts/migrate.ts",
-    "migrate:secure": "ts-node --transpile-only -r dotenv/config scripts/apply-migrations.ts 005 006",
+    "migrate:secure": "ts-node --transpile-only -r dotenv/config scripts/apply-migrations.ts 005 006 007",
+    "security:audit": "npm audit --audit-level=high",
     "desktop:prepare": "npm run build && node scripts/prepare-standalone.js",
     "desktop:dev": "npm run desktop:prepare && electron desktop/main.cjs",
     "desktop:build": "npm run desktop:prepare && electron-builder --config electron-builder.json"
@@ -48,7 +49,8 @@
     "react-dom": "^18",
     "recharts": "^3.8.1",
     "sonner": "^2.0.7",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^20",

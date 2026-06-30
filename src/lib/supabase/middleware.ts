@@ -1,6 +1,7 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_PATH } from "@/constants";
+import { rateLimit } from "@/lib/security/rate-limit";
+import { createServerClient } from "@supabase/ssr";
 
 const ADMIN_ROUTES = [
   "/dashboard",
@@ -15,9 +16,51 @@ const STAFF_ROUTES = ["/my-attendance"];
 const SHARED_ROUTES = ["/profile", "/my-leaves"];
 const PUBLIC_ROUTES = ["/", AUTH_PATH, "/login", "/register", "/terms", "/privacy"];
 const AUTH_SUBROUTES = ["/auth/reset-password"];
+const RATE_LIMITED_PREFIXES = [AUTH_PATH, "/auth/reset-password"];
+
+function getClientIp(request: NextRequest): string {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) return forwarded.split(",")[0]?.trim() || "unknown";
+  return request.headers.get("x-real-ip") || "unknown";
+}
 
 export async function updateSession(request: NextRequest) {
+  const requestId = crypto.randomUUID();
   let supabaseResponse = NextResponse.next({ request });
+  supabaseResponse.headers.set("x-request-id", requestId);
+
+  const pathname = request.nextUrl.pathname;
+  if (RATE_LIMITED_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    const ip = getClientIp(request);
+    const limit = rateLimit(`auth:${ip}`, 20, 60_000);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please wait and try again." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(limit.retryAfterSec),
+            "x-request-id": requestId,
+          },
+        }
+      );
+    }
+  }
+
+  const origin = request.headers.get("origin");
+  const host = request.headers.get("host");
+  if (
+    origin &&
+    host &&
+    request.method === "POST" &&
+    !origin.includes(host) &&
+    !origin.includes("localhost")
+  ) {
+    return NextResponse.json(
+      { error: "Invalid request origin" },
+      { status: 403, headers: { "x-request-id": requestId } }
+    );
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -32,6 +75,7 @@ export async function updateSession(request: NextRequest) {
             request.cookies.set(name, value)
           );
           supabaseResponse = NextResponse.next({ request });
+          supabaseResponse.headers.set("x-request-id", requestId);
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           );
@@ -44,7 +88,6 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const pathname = request.nextUrl.pathname;
   const isPublicRoute =
     PUBLIC_ROUTES.includes(pathname) || AUTH_SUBROUTES.some((r) => pathname.startsWith(r));
   const isAuthRoute =
@@ -53,7 +96,9 @@ export async function updateSession(request: NextRequest) {
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = AUTH_PATH;
-    return NextResponse.redirect(url);
+    const redirect = NextResponse.redirect(url);
+    redirect.headers.set("x-request-id", requestId);
+    return redirect;
   }
 
   if (user && isAuthRoute) {
@@ -67,7 +112,9 @@ export async function updateSession(request: NextRequest) {
       const url = request.nextUrl.clone();
       url.pathname =
         profile.role === "admin" ? "/dashboard" : "/my-attendance";
-      return NextResponse.redirect(url);
+      const redirect = NextResponse.redirect(url);
+      redirect.headers.set("x-request-id", requestId);
+      return redirect;
     }
 
     return supabaseResponse;
@@ -76,7 +123,7 @@ export async function updateSession(request: NextRequest) {
   if (user && !isPublicRoute) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, is_active")
       .eq("user_id", user.id)
       .single();
 
@@ -84,7 +131,19 @@ export async function updateSession(request: NextRequest) {
       const url = request.nextUrl.clone();
       url.pathname = AUTH_PATH;
       url.searchParams.set("error", "profile-not-found");
-      return NextResponse.redirect(url);
+      const redirect = NextResponse.redirect(url);
+      redirect.headers.set("x-request-id", requestId);
+      return redirect;
+    }
+
+    if (!profile.is_active) {
+      await supabase.auth.signOut();
+      const url = request.nextUrl.clone();
+      url.pathname = AUTH_PATH;
+      url.searchParams.set("error", "account-disabled");
+      const redirect = NextResponse.redirect(url);
+      redirect.headers.set("x-request-id", requestId);
+      return redirect;
     }
 
     const role = profile.role;
@@ -96,13 +155,17 @@ export async function updateSession(request: NextRequest) {
     if (role === "staff" && ADMIN_ROUTES.some((r) => pathname.startsWith(r))) {
       const url = request.nextUrl.clone();
       url.pathname = "/my-attendance";
-      return NextResponse.redirect(url);
+      const redirect = NextResponse.redirect(url);
+      redirect.headers.set("x-request-id", requestId);
+      return redirect;
     }
 
     if (role === "admin" && STAFF_ROUTES.some((r) => pathname.startsWith(r))) {
       const url = request.nextUrl.clone();
       url.pathname = "/dashboard";
-      return NextResponse.redirect(url);
+      const redirect = NextResponse.redirect(url);
+      redirect.headers.set("x-request-id", requestId);
+      return redirect;
     }
   }
 
@@ -119,7 +182,9 @@ export async function updateSession(request: NextRequest) {
       url.pathname =
         profile?.role === "admin" ? "/dashboard" : "/my-attendance";
     }
-    return NextResponse.redirect(url);
+    const redirect = NextResponse.redirect(url);
+    redirect.headers.set("x-request-id", requestId);
+    return redirect;
   }
 
   return supabaseResponse;

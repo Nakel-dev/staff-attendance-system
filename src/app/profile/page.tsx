@@ -6,6 +6,7 @@ import { StaffCard } from "@/components/staff/StaffCard";
 import { StaffForm } from "@/components/staff/StaffForm";
 import { StaffProfileView } from "@/components/staff/StaffProfileView";
 import { FaceEnrollmentCard } from "@/components/profile/FaceEnrollmentCard";
+import { MfaSettingsCard } from "@/components/profile/MfaSettingsCard";
 import { AppShell } from "@/components/layout/AppShell";
 
 export default async function ProfilePage() {
@@ -73,6 +74,7 @@ export default async function ProfilePage() {
           {isAdmin && <StaffForm profile={profile} />}
         </div>
         <FaceEnrollmentCard />
+        <MfaSettingsCard />
         <StaffProfileView
           staffId={profile.id}
           initialMonth={month}

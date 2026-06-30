@@ -40,8 +40,8 @@ export const LEAVE_TYPE_LABELS: Record<string, string> = {
 
 export const ATTENDANCE_MODE_LABELS: Record<string, string> = {
   trust: "Trust — self check-in, no location or photo",
-  standard: "Standard — geofence + selfie + face match",
-  strict: "Strict — geofence + face match + scan reception QR code",
+  standard: "Standard — geofence + live video + face match",
+  strict: "Strict — geofence + live video + face match + reception QR",
   admin_only: "Admin only — manager marks attendance manually",
 };
 

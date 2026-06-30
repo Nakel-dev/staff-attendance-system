@@ -38,6 +38,8 @@ export interface Profile {
   avatar_url?: string;
   face_enrolled_at?: string | null;
   face_reference_photo_url?: string | null;
+  face_reference_video_url?: string | null;
+  face_liveness_score?: number | null;
   is_active: boolean;
   date_joined: string;
   created_at: string;
@@ -55,11 +57,14 @@ export interface Attendance {
   check_in_latitude?: number | null;
   check_in_longitude?: number | null;
   check_in_photo_url?: string | null;
+  check_in_video_url?: string | null;
   check_in_method?: CheckInMethod;
   verification_flag?: boolean;
   verification_note?: string | null;
   face_match_score?: number | null;
   face_match_passed?: boolean | null;
+  liveness_passed?: boolean | null;
+  liveness_score?: number | null;
   note?: string;
   marked_by?: string;
   created_at: string;

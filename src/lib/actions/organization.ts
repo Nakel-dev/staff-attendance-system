@@ -276,6 +276,7 @@ export async function getStaffCheckInPolicy() {
         geofenceRadiusM: org.geofence_radius_m ?? 150,
         hasOfficeLocation,
         requiresPhoto: mode === "standard" || mode === "strict",
+        requiresVideo: mode === "standard" || mode === "strict",
         requiresQr: mode === "strict",
         requiresFaceMatch: mode === "standard" || mode === "strict",
         faceEnrolled: !!profile.face_enrolled_at,
