@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -18,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { APP_NAME, AUTH_PATH, getHomePath } from "@/constants";
 import { logout } from "@/lib/actions/notifications";
-import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 
 interface SidebarProps {
@@ -91,6 +90,23 @@ export function Sidebar({ role, organizationName, pendingLeaves = 0 }: SidebarPr
               <Link
                 key={link.href}
                 href={link.href}
+                prefetch
+                onClick={(event) => {
+                  if (
+                    event.defaultPrevented ||
+                    event.button !== 0 ||
+                    event.metaKey ||
+                    event.ctrlKey ||
+                    event.shiftKey ||
+                    event.altKey
+                  ) {
+                    return;
+                  }
+                  if (pathname !== link.href) {
+                    event.preventDefault();
+                    router.push(link.href);
+                  }
+                }}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   isActive

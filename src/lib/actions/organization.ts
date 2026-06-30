@@ -270,13 +270,25 @@ export async function getStaffCheckInPolicy() {
     if (!profile?.organization_id) return { error: "Profile not found" };
 
     const admin = createAdminClient();
-    const { data: org, error } = await admin
+    let orgQuery = await admin
       .from("organizations")
       .select(
         "attendance_mode, office_latitude, office_longitude, geofence_radius_m, require_video_verification, require_face_match, require_geofence, require_qr_code"
       )
       .eq("id", profile.organization_id)
       .single();
+
+    if (orgQuery.error?.message?.includes("require_video_verification")) {
+      orgQuery = await admin
+        .from("organizations")
+        .select(
+          "attendance_mode, office_latitude, office_longitude, geofence_radius_m"
+        )
+        .eq("id", profile.organization_id)
+        .single();
+    }
+
+    const { data: org, error } = orgQuery;
 
     if (error || !org) return { error: error?.message || "Organization not found" };
 

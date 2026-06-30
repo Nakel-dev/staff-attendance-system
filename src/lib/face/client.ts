@@ -2,16 +2,24 @@
 
 let modelsLoaded = false;
 
-const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model";
+const MODEL_URL = "/models";
+
+async function loadModelsFrom(url: string) {
+  const faceapi = await import("@vladmandic/face-api");
+  await Promise.all([
+    faceapi.nets.ssdMobilenetv1.loadFromUri(url),
+    faceapi.nets.faceLandmark68Net.loadFromUri(url),
+    faceapi.nets.faceRecognitionNet.loadFromUri(url),
+  ]);
+}
 
 export async function loadFaceModels() {
   if (modelsLoaded) return;
-  const faceapi = await import("@vladmandic/face-api");
-  await Promise.all([
-    faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
-    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-  ]);
+  try {
+    await loadModelsFrom(MODEL_URL);
+  } catch {
+    await loadModelsFrom("https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model");
+  }
   modelsLoaded = true;
 }
 

@@ -4,7 +4,7 @@ import {
   getOrganizationDisplayName,
   getProfileWithOrganization,
 } from "@/lib/supabase/profile";
-import { PortalShell } from "@/components/layout/PortalShell";
+import { AppShell } from "@/components/layout/AppShell";
 import { AUTH_PATH } from "@/constants";
 import { redirect } from "next/navigation";
 
@@ -39,13 +39,13 @@ export default async function PortalLayout({
     .limit(20);
 
   return (
-    <PortalShell
+    <AppShell
       profile={profile}
       organizationName={organizationName}
       notifications={notifications || []}
       pendingLeaves={pendingLeaves || 0}
     >
       {children}
-    </PortalShell>
+    </AppShell>
   );
 }
