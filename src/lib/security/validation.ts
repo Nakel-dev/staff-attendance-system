@@ -24,6 +24,10 @@ export const attendanceSecuritySchema = z.object({
   officeLatitude: z.number().finite().nullable(),
   officeLongitude: z.number().finite().nullable(),
   geofenceRadiusM: z.number().int().min(50).max(5000),
+  requireVideoVerification: z.boolean(),
+  requireFaceMatch: z.boolean(),
+  requireGeofence: z.boolean(),
+  requireQrCode: z.boolean(),
 });
 
 export const signInSchema = z.object({

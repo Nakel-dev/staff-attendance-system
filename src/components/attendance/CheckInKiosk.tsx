@@ -15,13 +15,17 @@ export function CheckInKiosk() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadKiosk = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     const result = await getCheckInKioskState();
     setLoading(false);
     if ("error" in result) {
-      toast.error(result.error);
+      setLoadError(result.error || "Failed to load desk code");
+      setEnabled(false);
+      setToken(null);
       return;
     }
     if (!("enabled" in result) || !result.enabled) {
@@ -87,7 +91,9 @@ export function CheckInKiosk() {
             Reception check-in QR
           </CardTitle>
           <CardDescription>
-            Enable Strict attendance mode in Settings to show a scannable QR code at reception.
+            {loadError
+              ? "Could not load desk code settings. Mark attendance below still works — check Settings if this persists."
+              : "Enable Strict attendance mode in Settings to show a scannable QR code at reception."}
           </CardDescription>
         </CardHeader>
       </Card>

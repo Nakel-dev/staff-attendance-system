@@ -9,7 +9,11 @@ import { FaceEnrollmentCard } from "@/components/profile/FaceEnrollmentCard";
 import { MfaSettingsCard } from "@/components/profile/MfaSettingsCard";
 import { AppShell } from "@/components/layout/AppShell";
 
-export default async function ProfilePage() {
+export default async function ProfilePage({
+  searchParams,
+}: {
+  searchParams: { enroll?: string };
+}) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect(AUTH_PATH);
@@ -73,7 +77,7 @@ export default async function ProfilePage() {
           <StaffCard profile={profile} />
           {isAdmin && <StaffForm profile={profile} />}
         </div>
-        <FaceEnrollmentCard />
+        <FaceEnrollmentCard promptEnrollment={searchParams.enroll === "1"} />
         <MfaSettingsCard />
         <StaffProfileView
           staffId={profile.id}

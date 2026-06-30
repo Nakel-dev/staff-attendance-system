@@ -76,7 +76,16 @@ export async function registerOrganization(data: {
 
     const { data: org, error: orgError } = await admin
       .from("organizations")
-      .insert({ name: orgName, slug, invite_code: inviteCode })
+      .insert({
+        name: orgName,
+        slug,
+        invite_code: inviteCode,
+        attendance_mode: "standard",
+        require_video_verification: true,
+        require_face_match: true,
+        require_geofence: true,
+        require_qr_code: false,
+      })
       .select("id, invite_code")
       .single();
 

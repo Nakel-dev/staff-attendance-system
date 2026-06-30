@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveCheckInPolicy } from "@/lib/utils/securityPolicy";
 import { revalidatePath } from "next/cache";
 import type { AttendanceMode } from "@/lib/types";
 
@@ -106,15 +107,16 @@ export async function getOrganizationSettings() {
     const auth = await requireOrgAdmin();
     if ("error" in auth) return { error: auth.error };
 
-    const { data: org, error } = await auth.supabase
+    const admin = createAdminClient();
+    const { data: org, error } = await admin
       .from("organizations")
       .select(
-        "id, name, invite_code, slug, created_at, attendance_mode, office_latitude, office_longitude, geofence_radius_m"
+        "id, name, invite_code, slug, created_at, attendance_mode, office_latitude, office_longitude, geofence_radius_m, require_video_verification, require_face_match, require_geofence, require_qr_code"
       )
       .eq("id", auth.profile.organization_id)
       .single();
 
-    if (error || !org) return { error: "Organization not found" };
+    if (error || !org) return { error: error?.message || "Organization not found" };
     return { organization: org };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Failed to load settings" };
@@ -126,6 +128,10 @@ export async function updateAttendanceSecuritySettings(input: {
   officeLatitude: number | null;
   officeLongitude: number | null;
   geofenceRadiusM: number;
+  requireVideoVerification: boolean;
+  requireFaceMatch: boolean;
+  requireGeofence: boolean;
+  requireQrCode: boolean;
 }) {
   try {
     const auth = await requireOrgAdmin();
@@ -135,11 +141,14 @@ export async function updateAttendanceSecuritySettings(input: {
       return { error: "Geofence radius must be between 50 and 5000 meters" };
     }
 
-    if (
-      (input.attendanceMode === "standard" || input.attendanceMode === "strict") &&
-      (input.officeLatitude == null || input.officeLongitude == null)
-    ) {
-      return { error: "Office location is required for Standard and Strict modes" };
+    const needsOffice =
+      input.requireGeofence ||
+      input.requireQrCode ||
+      input.attendanceMode === "standard" ||
+      input.attendanceMode === "strict";
+
+    if (needsOffice && (input.officeLatitude == null || input.officeLongitude == null)) {
+      return { error: "Office location is required when geofence or QR verification is enabled" };
     }
 
     const admin = createAdminClient();
@@ -150,6 +159,10 @@ export async function updateAttendanceSecuritySettings(input: {
         office_latitude: input.officeLatitude,
         office_longitude: input.officeLongitude,
         geofence_radius_m: input.geofenceRadiusM,
+        require_video_verification: input.requireVideoVerification,
+        require_face_match: input.requireFaceMatch,
+        require_geofence: input.requireGeofence,
+        require_qr_code: input.requireQrCode,
         updated_at: new Date().toISOString(),
       })
       .eq("id", auth.profile.organization_id);
@@ -206,13 +219,14 @@ export async function getCheckInKioskState() {
     const auth = await requireOrgAdmin();
     if ("error" in auth) return { error: auth.error };
 
-    const { data: org, error } = await auth.supabase
+    const admin = createAdminClient();
+    const { data: org, error } = await admin
       .from("organizations")
       .select("attendance_mode, checkin_token, checkin_token_expires_at")
       .eq("id", auth.profile.organization_id)
       .single();
 
-    if (error || !org) return { error: "Organization not found" };
+    if (error || !org) return { error: error?.message || "Organization not found" };
     if (org.attendance_mode !== "strict") {
       return { enabled: false as const, mode: org.attendance_mode };
     }
@@ -258,33 +272,23 @@ export async function getStaffCheckInPolicy() {
 
     if (!profile?.organization_id) return { error: "Profile not found" };
 
-    const { data: org, error } = await supabase
+    const admin = createAdminClient();
+    const { data: org, error } = await admin
       .from("organizations")
-      .select("attendance_mode, office_latitude, office_longitude, geofence_radius_m")
+      .select(
+        "attendance_mode, office_latitude, office_longitude, geofence_radius_m, require_video_verification, require_face_match, require_geofence, require_qr_code"
+      )
       .eq("id", profile.organization_id)
       .single();
 
-    if (error || !org) return { error: "Organization not found" };
+    if (error || !org) return { error: error?.message || "Organization not found" };
 
-    const mode = (org.attendance_mode || "trust") as AttendanceMode;
-    const hasOfficeLocation =
-      org.office_latitude != null && org.office_longitude != null;
+    const policy = resolveCheckInPolicy(org);
 
     return {
       policy: {
-        mode,
-        geofenceRadiusM: org.geofence_radius_m ?? 150,
-        hasOfficeLocation,
-        requiresPhoto: mode === "standard" || mode === "strict",
-        requiresVideo: mode === "standard" || mode === "strict",
-        requiresQr: mode === "strict",
-        requiresFaceMatch: mode === "standard" || mode === "strict",
+        ...policy,
         faceEnrolled: !!profile.face_enrolled_at,
-        selfCheckInEnabled: mode !== "admin_only",
-        officeConfiguredForSecureMode:
-          mode === "trust" ||
-          mode === "admin_only" ||
-          hasOfficeLocation,
       },
     };
   } catch (err) {

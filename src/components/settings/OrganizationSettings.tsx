@@ -22,6 +22,10 @@ interface OrganizationSettingsProps {
     office_latitude?: number | null;
     office_longitude?: number | null;
     geofence_radius_m?: number | null;
+    require_video_verification?: boolean | null;
+    require_face_match?: boolean | null;
+    require_geofence?: boolean | null;
+    require_qr_code?: boolean | null;
   };
 }
 
@@ -123,6 +127,10 @@ export function OrganizationSettings({ organization }: OrganizationSettingsProps
             office_latitude: organization.office_latitude,
             office_longitude: organization.office_longitude,
             geofence_radius_m: organization.geofence_radius_m,
+            require_video_verification: organization.require_video_verification,
+            require_face_match: organization.require_face_match,
+            require_geofence: organization.require_geofence,
+            require_qr_code: organization.require_qr_code,
           }}
         />
 

@@ -4,9 +4,11 @@ import { useState } from "react";
 import { Loader2, MapPin, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { updateAttendanceSecuritySettings } from "@/lib/actions/organization";
+import { presetTogglesForMode } from "@/lib/utils/securityPolicy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -24,12 +26,29 @@ interface AttendanceSecuritySettingsProps {
     office_latitude?: number | null;
     office_longitude?: number | null;
     geofence_radius_m?: number | null;
+    require_video_verification?: boolean | null;
+    require_face_match?: boolean | null;
+    require_geofence?: boolean | null;
+    require_qr_code?: boolean | null;
   };
 }
 
 export function AttendanceSecuritySettings({ initial }: AttendanceSecuritySettingsProps) {
-  const [mode, setMode] = useState<AttendanceMode>(
-    (initial.attendance_mode as AttendanceMode) || "trust"
+  const initialMode = (initial.attendance_mode as AttendanceMode) || "standard";
+  const initialPreset = presetTogglesForMode(initialMode);
+
+  const [mode, setMode] = useState<AttendanceMode>(initialMode);
+  const [requireVideo, setRequireVideo] = useState(
+    initial.require_video_verification ?? initialPreset.requireVideoVerification
+  );
+  const [requireFace, setRequireFace] = useState(
+    initial.require_face_match ?? initialPreset.requireFaceMatch
+  );
+  const [requireGeofence, setRequireGeofence] = useState(
+    initial.require_geofence ?? initialPreset.requireGeofence
+  );
+  const [requireQr, setRequireQr] = useState(
+    initial.require_qr_code ?? initialPreset.requireQrCode
   );
   const [latitude, setLatitude] = useState(
     initial.office_latitude != null ? String(initial.office_latitude) : ""
@@ -40,6 +59,15 @@ export function AttendanceSecuritySettings({ initial }: AttendanceSecuritySettin
   const [radius, setRadius] = useState(String(initial.geofence_radius_m ?? 150));
   const [saving, setSaving] = useState(false);
   const [locating, setLocating] = useState(false);
+
+  const applyModePreset = (nextMode: AttendanceMode) => {
+    setMode(nextMode);
+    const preset = presetTogglesForMode(nextMode);
+    setRequireVideo(preset.requireVideoVerification);
+    setRequireFace(preset.requireFaceMatch);
+    setRequireGeofence(preset.requireGeofence);
+    setRequireQr(preset.requireQrCode);
+  };
 
   const useCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -69,6 +97,10 @@ export function AttendanceSecuritySettings({ initial }: AttendanceSecuritySettin
       officeLatitude: latitude.trim() ? Number(latitude) : null,
       officeLongitude: longitude.trim() ? Number(longitude) : null,
       geofenceRadiusM: Number(radius) || 150,
+      requireVideoVerification: requireVideo,
+      requireFaceMatch: requireFace,
+      requireGeofence: requireGeofence,
+      requireQrCode: requireQr,
     });
     setSaving(false);
     if (result.error) {
@@ -78,7 +110,7 @@ export function AttendanceSecuritySettings({ initial }: AttendanceSecuritySettin
     toast.success("Attendance security settings saved");
   };
 
-  const needsOfficeLocation = mode === "standard" || mode === "strict";
+  const needsOfficeLocation = requireGeofence || requireQr;
 
   return (
     <Card className="lg:col-span-2">
@@ -88,13 +120,13 @@ export function AttendanceSecuritySettings({ initial }: AttendanceSecuritySettin
           Attendance Security
         </CardTitle>
         <CardDescription>
-          Prevent staff from checking in remotely. Choose a protection level that fits your workplace.
+          Video and face verification are the primary anti-cheat controls. Toggle each feature for your workplace.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-2">
-          <Label>Protection mode</Label>
-          <Select value={mode} onValueChange={(value) => setMode(value as AttendanceMode)}>
+          <Label>Quick preset</Label>
+          <Select value={mode} onValueChange={(value) => applyModePreset(value as AttendanceMode)}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -106,6 +138,37 @@ export function AttendanceSecuritySettings({ initial }: AttendanceSecuritySettin
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="flex items-start gap-3 rounded-lg border p-3">
+            <Checkbox checked={requireVideo} onCheckedChange={(v) => setRequireVideo(!!v)} />
+            <span>
+              <span className="block text-sm font-medium">Live video liveness</span>
+              <span className="text-xs text-muted-foreground">Required for check-in and check-out</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3 rounded-lg border p-3">
+            <Checkbox checked={requireFace} onCheckedChange={(v) => setRequireFace(!!v)} />
+            <span>
+              <span className="block text-sm font-medium">Face match</span>
+              <span className="text-xs text-muted-foreground">Staff must enroll in Profile first</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3 rounded-lg border p-3">
+            <Checkbox checked={requireGeofence} onCheckedChange={(v) => setRequireGeofence(!!v)} />
+            <span>
+              <span className="block text-sm font-medium">Office geofence</span>
+              <span className="text-xs text-muted-foreground">GPS must be within office radius</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3 rounded-lg border p-3">
+            <Checkbox checked={requireQr} onCheckedChange={(v) => setRequireQr(!!v)} />
+            <span>
+              <span className="block text-sm font-medium">Reception QR / desk code</span>
+              <span className="text-xs text-muted-foreground">Show QR on Attendance page at reception</span>
+            </span>
+          </label>
         </div>
 
         {needsOfficeLocation && (
@@ -160,9 +223,9 @@ export function AttendanceSecuritySettings({ initial }: AttendanceSecuritySettin
           </div>
         )}
 
-        {mode === "strict" && (
+        {requireQr && (
           <p className="text-sm text-muted-foreground">
-            In Strict mode, open Attendance on a reception tablet to show the rotating QR code staff must scan.
+            Open Attendance on a reception tablet to display the rotating QR code staff must scan at check-in.
           </p>
         )}
 

@@ -124,9 +124,9 @@ export function SignUpPanel({ tab, onTabChange, onSwitchToSignIn }: SignUpPanelP
       }
       setSuccess({
         title: "Welcome aboard",
-        message: `You joined ${result.organizationName}. You can now track attendance and request leave.`,
-        redirectTo: "/my-attendance?welcome=1",
-        buttonLabel: "Go to My Attendance",
+        message: `You joined ${result.organizationName}. Complete face enrollment next so video check-in can verify you.`,
+        redirectTo: "/profile?enroll=1",
+        buttonLabel: "Enroll Face & Continue",
       });
       toast.success(`Welcome to ${result.organizationName}!`);
     } finally {

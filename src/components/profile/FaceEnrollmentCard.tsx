@@ -15,7 +15,7 @@ import {
   type VideoVerificationResult,
 } from "@/components/attendance/VideoVerificationCapture";
 
-export function FaceEnrollmentCard() {
+export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollment?: boolean }) {
   const [enrolled, setEnrolled] = useState(false);
   const [enrolledAt, setEnrolledAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,14 +97,16 @@ export function FaceEnrollmentCard() {
   }
 
   return (
-    <Card>
+    <Card className={promptEnrollment && !enrolled ? "border-primary ring-1 ring-primary/30" : undefined}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ScanFace className="h-5 w-5" />
           Video Face Enrollment
         </CardTitle>
         <CardDescription>
-          Record a short live video so check-in can verify it is really you.
+          {promptEnrollment && !enrolled
+            ? "Welcome — complete this step first so video check-in can verify your identity."
+            : "Record a short live video so check-in can verify it is really you."}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

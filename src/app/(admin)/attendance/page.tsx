@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { format } from "date-fns";
 import { AttendanceMarker } from "@/components/attendance/AttendanceMarker";
 import { CheckInKiosk } from "@/components/attendance/CheckInKiosk";
+import { CheckInProofPanel } from "@/components/attendance/CheckInProofPanel";
 
 export default async function AttendancePage({
   searchParams,
@@ -59,6 +60,7 @@ export default async function AttendancePage({
         <p className="text-muted-foreground">Record attendance for all active staff members</p>
       </div>
       <CheckInKiosk />
+      <CheckInProofPanel />
       <AttendanceMarker
         mode="admin"
         staff={staff || []}

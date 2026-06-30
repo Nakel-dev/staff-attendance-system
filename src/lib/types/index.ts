@@ -20,6 +20,10 @@ export interface Organization {
   office_latitude?: number | null;
   office_longitude?: number | null;
   geofence_radius_m?: number;
+  require_video_verification?: boolean;
+  require_face_match?: boolean;
+  require_geofence?: boolean;
+  require_qr_code?: boolean;
   checkin_token?: string | null;
   checkin_token_expires_at?: string | null;
   created_at: string;
@@ -65,6 +69,9 @@ export interface Attendance {
   face_match_passed?: boolean | null;
   liveness_passed?: boolean | null;
   liveness_score?: number | null;
+  check_out_video_url?: string | null;
+  check_out_liveness_passed?: boolean | null;
+  check_out_face_match_passed?: boolean | null;
   note?: string;
   marked_by?: string;
   created_at: string;

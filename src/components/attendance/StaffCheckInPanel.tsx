@@ -35,10 +35,10 @@ interface CheckInPolicy {
   mode: AttendanceMode;
   geofenceRadiusM: number;
   hasOfficeLocation: boolean;
-  requiresPhoto: boolean;
   requiresVideo: boolean;
   requiresQr: boolean;
   requiresFaceMatch: boolean;
+  requiresGeofence: boolean;
   faceEnrolled: boolean;
   selfCheckInEnabled: boolean;
   officeConfiguredForSecureMode: boolean;
@@ -76,8 +76,10 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
   const [loadingPolicy, setLoadingPolicy] = useState(true);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [showCheckoutVerification, setShowCheckoutVerification] = useState(false);
   const [qrToken, setQrToken] = useState("");
-  const [verification, setVerification] = useState<VideoVerificationResult | null>(null);
+  const [checkInVerification, setCheckInVerification] = useState<VideoVerificationResult | null>(null);
+  const [checkOutVerification, setCheckOutVerification] = useState<VideoVerificationResult | null>(null);
   const [locationStatus, setLocationStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -114,6 +116,17 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
     return path;
   }, []);
 
+  const uploadCheckoutVideo = useCallback(async (file: Blob, userId: string) => {
+    const supabase = createClient();
+    const path = `${userId}/checkout-${Date.now()}.webm`;
+    const { error } = await supabase.storage.from("check-in-videos").upload(path, file, {
+      contentType: file.type || "video/webm",
+      upsert: false,
+    });
+    if (error) throw new Error(error.message);
+    return path;
+  }, []);
+
   const handleCheckIn = async () => {
     if (!policy) return;
     setIsCheckingIn(true);
@@ -134,11 +147,11 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
       let videoPath: string | undefined;
 
       if (policy.requiresVideo) {
-        if (!verification) {
+        if (!checkInVerification) {
           toast.error("Complete the video liveness verification first");
           return;
         }
-        videoPath = await uploadVideo(verification.videoBlob, user.id);
+        videoPath = await uploadVideo(checkInVerification.videoBlob, user.id);
       }
 
       if (policy.requiresQr && !qrToken.trim()) {
@@ -146,7 +159,7 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
         return;
       }
 
-      if (policy.mode === "standard" || policy.mode === "strict" || policy.mode === "trust") {
+      if (policy.requiresGeofence || policy.mode === "trust") {
         try {
           const coords = await getLocation();
           latitude = coords.latitude;
@@ -155,52 +168,54 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
             `Location captured (${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)})`
           );
         } catch (locationError) {
-          if (policy.mode !== "trust") {
+          if (policy.requiresGeofence) {
             toast.error(
-              locationError instanceof Error
-                ? locationError.message
-                : "Location is required"
+              locationError instanceof Error ? locationError.message : "Location is required"
             );
             return;
           }
         }
       }
 
-      const optimisticTime = format(new Date(), "HH:mm:ss");
-      setLocalTodayRecord((prev) => ({
-        id: prev?.id || "temp",
-        staff_id: prev?.staff_id || "",
-        date: format(new Date(), "yyyy-MM-dd"),
-        status: "present",
-        check_in_time: optimisticTime,
-        check_out_time: prev?.check_out_time,
-        created_at: prev?.created_at || new Date().toISOString(),
-      }));
-
       const result = await checkInStaff({
         latitude,
         longitude,
         videoPath,
         qrToken: policy.requiresQr ? qrToken : undefined,
-        faceDescriptor: verification?.faceDescriptor,
-        frameDescriptors: verification?.frameDescriptors,
-        motionScore: verification?.motionScore,
+        faceDescriptor: checkInVerification?.faceDescriptor,
+        frameDescriptors: checkInVerification?.frameDescriptors,
+        motionScore: checkInVerification?.motionScore,
       });
 
       if ("error" in result) {
-        setLocalTodayRecord(todayRecord);
         toast.error(result.error);
         return;
       }
+      if (!("success" in result) || !result.success) {
+        toast.error("Check-in failed");
+        return;
+      }
+
+      setLocalTodayRecord((prev) => ({
+        ...(prev || {
+          id: "temp",
+          staff_id: "",
+          date: format(new Date(), "yyyy-MM-dd"),
+          status: "present",
+          created_at: new Date().toISOString(),
+        }),
+        check_in_time: result.checkInTime || format(new Date(), "HH:mm:ss"),
+        verification_flag: result.flagged,
+      }));
 
       toast.success(
         result.flagged
           ? `Checked in at ${result.checkInTime ? formatTime(result.checkInTime) : "now"} (flagged for review)`
           : `Checked in at ${result.checkInTime ? formatTime(result.checkInTime) : "now"}`
       );
+      setCheckInVerification(null);
       router.refresh();
     } catch (err) {
-      setLocalTodayRecord(todayRecord);
       toast.error(err instanceof Error ? err.message : "Check-in failed");
     } finally {
       setIsCheckingIn(false);
@@ -208,20 +223,65 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
   };
 
   const handleCheckOut = async () => {
-    setIsCheckingOut(true);
-    const optimisticTime = format(new Date(), "HH:mm:ss");
-    setLocalTodayRecord((prev) =>
-      prev ? { ...prev, check_out_time: optimisticTime } : prev
-    );
-    const result = await checkOutStaff();
-    setIsCheckingOut(false);
-    if (result.error) {
-      setLocalTodayRecord(todayRecord);
-      toast.error(result.error);
+    if (!policy) return;
+
+    if (policy.requiresVideo && !showCheckoutVerification) {
+      setShowCheckoutVerification(true);
+      toast.message("Record a verification video before checking out");
       return;
     }
-    toast.success(`Checked out at ${result.checkOutTime ? formatTime(result.checkOutTime) : "now"}`);
-    router.refresh();
+
+    setIsCheckingOut(true);
+
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("You must be signed in to check out");
+        return;
+      }
+
+      let videoPath: string | undefined;
+      if (policy.requiresVideo) {
+        if (!checkOutVerification) {
+          toast.error("Complete the checkout video verification first");
+          return;
+        }
+        videoPath = await uploadCheckoutVideo(checkOutVerification.videoBlob, user.id);
+      }
+
+      const result = await checkOutStaff({
+        videoPath,
+        faceDescriptor: checkOutVerification?.faceDescriptor,
+        frameDescriptors: checkOutVerification?.frameDescriptors,
+        motionScore: checkOutVerification?.motionScore,
+      });
+
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      if (!result.success) {
+        toast.error("Check-out failed");
+        return;
+      }
+
+      setLocalTodayRecord((prev) =>
+        prev
+          ? { ...prev, check_out_time: result.checkOutTime || format(new Date(), "HH:mm:ss") }
+          : prev
+      );
+      toast.success(`Checked out at ${result.checkOutTime ? formatTime(result.checkOutTime) : "now"}`);
+      setCheckOutVerification(null);
+      setShowCheckoutVerification(false);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Check-out failed");
+    } finally {
+      setIsCheckingOut(false);
+    }
   };
 
   if (loadingPolicy) {
@@ -247,7 +307,8 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
         <CardDescription>
           {policy
             ? ATTENDANCE_MODE_LABELS[policy.mode]
-            : "Record your workday"} — {format(new Date(), "MMMM d, yyyy")}
+            : "Record your workday"}{" "}
+          — {format(new Date(), "MMMM d, yyyy")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -280,7 +341,7 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
               <Link href="/profile" className="font-medium underline">
                 Profile
               </Link>{" "}
-              before you can check in. This stops colleagues from checking in on your behalf.
+              before check-in or check-out. This stops colleagues from checking in on your behalf.
             </AlertDescription>
           </Alert>
         )}
@@ -305,19 +366,42 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
                 <span>Checked out at {formatTime(localTodayRecord!.check_out_time!)}</span>
               </div>
             ) : (
-              <Button
-                onClick={handleCheckOut}
-                disabled={isCheckingOut}
-                variant="outline"
-                className="w-full sm:w-auto"
-              >
-                {isCheckingOut ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <LogIn className="mr-2 h-4 w-4 rotate-180" />
+              <div className="space-y-4">
+                {showCheckoutVerification && policy?.requiresVideo && (
+                  <>
+                    <VideoVerificationCapture
+                      label="Checkout video verification"
+                      hint="Record a 3-second clip with head movement to verify it is you checking out."
+                      disabled={isCheckingOut}
+                      onVerified={(result) => setCheckOutVerification(result)}
+                    />
+                    {checkOutVerification?.previewUrl && (
+                      <video
+                        src={checkOutVerification.previewUrl}
+                        controls
+                        className="h-32 w-full max-w-sm rounded-lg border"
+                      />
+                    )}
+                  </>
                 )}
-                Check Out Now
-              </Button>
+                <Button
+                  onClick={handleCheckOut}
+                  disabled={
+                    isCheckingOut ||
+                    (policy?.requiresFaceMatch && !policy?.faceEnrolled) ||
+                    (policy?.requiresVideo && showCheckoutVerification && !checkOutVerification)
+                  }
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                >
+                  {isCheckingOut ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <LogIn className="mr-2 h-4 w-4 rotate-180" />
+                  )}
+                  Check Out Now
+                </Button>
+              </div>
             )}
           </div>
         ) : (
@@ -328,13 +412,13 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
                   label="Live video verification"
                   hint="Record a 3-second clip and move your head slowly. Static photos are rejected."
                   disabled={isCheckingIn}
-                  onVerified={(result) => setVerification(result)}
+                  onVerified={(result) => setCheckInVerification(result)}
                 />
               )}
 
-              {verification?.previewUrl && (
+              {checkInVerification?.previewUrl && (
                 <video
-                  src={verification.previewUrl}
+                  src={checkInVerification.previewUrl}
                   controls
                   className="h-32 w-full max-w-sm rounded-lg border"
                 />
@@ -360,7 +444,7 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
                 </div>
               )}
 
-              {(policy.mode === "standard" || policy.mode === "strict") && (
+              {policy.requiresGeofence && (
                 <p className="flex items-start gap-2 text-sm text-muted-foreground">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
                   You must be within {policy.geofenceRadiusM}m of the office. Location access will be requested.
@@ -377,7 +461,7 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
                   isCheckingIn ||
                   !policy.officeConfiguredForSecureMode ||
                   (policy.requiresFaceMatch && !policy.faceEnrolled) ||
-                  (policy.requiresVideo && !verification) ||
+                  (policy.requiresVideo && !checkInVerification) ||
                   (policy.requiresQr && !qrToken.trim())
                 }
                 size="lg"
