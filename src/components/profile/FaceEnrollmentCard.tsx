@@ -104,7 +104,7 @@ export function FaceEnrollmentCard() {
           Video Face Enrollment
         </CardTitle>
         <CardDescription>
-          OPay-style enrollment: record a short live video so check-in can verify it is really you.
+          Record a short live video so check-in can verify it is really you.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

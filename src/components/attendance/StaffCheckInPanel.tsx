@@ -325,7 +325,7 @@ export function StaffCheckInPanel({ todayRecord }: StaffCheckInPanelProps) {
             <div className="space-y-4">
               {policy.requiresVideo && (
                 <VideoVerificationCapture
-                  label="OPay-style video verification"
+                  label="Live video verification"
                   hint="Record a 3-second clip and move your head slowly. Static photos are rejected."
                   disabled={isCheckingIn}
                   onVerified={(result) => setVerification(result)}

@@ -180,7 +180,7 @@ export function VideoVerificationCapture({
       {progress && <p className="text-xs text-muted-foreground">{progress}</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
       <p className="text-xs text-muted-foreground">
-        Requires at least {MIN_LIVENESS_FRAMES} live frames with natural head movement (OPay-style liveness).
+        Requires at least {MIN_LIVENESS_FRAMES} live frames with natural head movement.
       </p>
     </div>
   );
