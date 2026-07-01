@@ -20,16 +20,26 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [showCapture, setShowCapture] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
       const status = await getFaceEnrollmentStatus();
       setLoading(false);
-      if ("error" in status) return;
+      if ("error" in status) {
+        setLoadError(status.error || "Failed to load face enrollment");
+        return;
+      }
       setEnrolled(status.enrolled);
       setEnrolledAt(status.enrolledAt);
     })();
   }, []);
+
+  useEffect(() => {
+    if (promptEnrollment && !loading && !enrolled) {
+      setShowCapture(true);
+    }
+  }, [promptEnrollment, loading, enrolled]);
 
   const handleComplete = async (capture: FaceRegistrationCaptureResult) => {
     setProcessing(true);
@@ -117,6 +127,12 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {loadError && (
+          <Alert variant="destructive">
+            <AlertTitle>Could not load face registration</AlertTitle>
+            <AlertDescription>{loadError}</AlertDescription>
+          </Alert>
+        )}
         {enrolled ? (
           <Alert>
             <CheckCircle2 className="h-4 w-4" />

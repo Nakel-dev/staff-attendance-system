@@ -18,7 +18,6 @@ import { getInitials, timeAgo } from "@/lib/utils/formatDate";
 import { markAllNotificationsRead, markNotificationRead } from "@/lib/actions/notifications";
 import type { Notification, Profile } from "@/lib/types";
 import { getHomePath } from "@/constants";
-import { navigateTo } from "@/lib/navigation/hard-nav";
 import { navigateToLogout } from "@/lib/auth/logout";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -132,12 +131,11 @@ export function Header({ title, profile, notifications, profilePath }: HeaderPro
               <DropdownMenuLabel>{profile.email}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {profilePath && (
-                <DropdownMenuItem
-                  onClick={() => navigateTo(profilePath)}
-                  className="cursor-pointer"
-                >
-                  <User className="mr-2 h-4 w-4" />
-                  View Profile
+                <DropdownMenuItem asChild>
+                  <a href={profilePath} className="flex items-center cursor-pointer">
+                    <User className="mr-2 h-4 w-4" />
+                    View Profile
+                  </a>
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={handleLogout}>

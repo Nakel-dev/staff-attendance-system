@@ -1,8 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { format } from "date-fns";
 import { MyAttendanceView } from "@/components/attendance/MyAttendanceView";
+import { StaffPortalQuickLinks } from "@/components/portal/StaffPortalQuickLinks";
 import { redirect } from "next/navigation";
 import { AUTH_PATH } from "@/constants";
+
+export const dynamic = "force-dynamic";
 
 export default async function MyAttendancePage() {
   const supabase = await createClient();
@@ -47,8 +50,9 @@ export default async function MyAttendancePage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold tracking-tight">My Attendance</h2>
-        <p className="text-muted-foreground">View your attendance records and check in</p>
+        <p className="text-muted-foreground">View kiosk attendance and register your face for check-in</p>
       </div>
+      <StaffPortalQuickLinks />
       <MyAttendanceView
         staffId={profile.id}
         initialRecords={allRecords || records || []}

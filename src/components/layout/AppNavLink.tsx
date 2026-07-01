@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
-import { navigateTo } from "@/lib/navigation/hard-nav";
 import { cn } from "@/lib/utils";
 
 interface AppNavLinkProps {
@@ -15,6 +13,7 @@ interface AppNavLinkProps {
   badge?: React.ReactNode;
 }
 
+/** Plain anchor — full page load, works even if client routing is stale or cached. */
 export function AppNavLink({
   href,
   label,
@@ -27,30 +26,14 @@ export function AppNavLink({
   const isActive = pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <Link
+    <a
       href={href}
-      prefetch={false}
-      onClick={(event) => {
-        if (
-          event.defaultPrevented ||
-          event.button !== 0 ||
-          event.metaKey ||
-          event.ctrlKey ||
-          event.shiftKey ||
-          event.altKey ||
-          pathname === href
-        ) {
-          return;
-        }
-        event.preventDefault();
-        navigateTo(href);
-      }}
       className={cn(className, isActive && "active-nav")}
       aria-current={isActive ? "page" : undefined}
     >
       <Icon className={iconClassName} />
       <span className="flex-1">{label}</span>
       {badge}
-    </Link>
+    </a>
   );
 }

@@ -4,6 +4,8 @@ import { MyLeavesView } from "@/components/leaves/MyLeavesView";
 import { AUTH_PATH } from "@/constants";
 import { redirect } from "next/navigation";
 
+export const dynamic = "force-dynamic";
+
 export default async function MyLeavesPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -18,5 +20,9 @@ export default async function MyLeavesPage() {
     .eq("staff_id", profile.id)
     .order("created_at", { ascending: false });
 
-  return <MyLeavesView staffId={profile.id} initialLeaves={leaves || []} />;
+  return (
+    <div className="space-y-6">
+      <MyLeavesView staffId={profile.id} initialLeaves={leaves || []} />
+    </div>
+  );
 }

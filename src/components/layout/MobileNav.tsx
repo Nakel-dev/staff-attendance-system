@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -10,7 +9,6 @@ import {
   User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { navigateTo } from "@/lib/navigation/hard-nav";
 import type { LucideIcon } from "lucide-react";
 
 interface NavLink {
@@ -52,25 +50,9 @@ export function MobileNav({ role, pendingLeaves = 0 }: MobileNavProps) {
           const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
           const showBadge = !!link.badge && pendingLeaves > 0;
           return (
-            <Link
+            <a
               key={link.href}
               href={link.href}
-              prefetch={false}
-              onClick={(event) => {
-                if (
-                  event.defaultPrevented ||
-                  event.button !== 0 ||
-                  event.metaKey ||
-                  event.ctrlKey ||
-                  event.shiftKey ||
-                  event.altKey ||
-                  pathname === link.href
-                ) {
-                  return;
-                }
-                event.preventDefault();
-                navigateTo(link.href);
-              }}
               className={cn(
                 "flex flex-col items-center gap-0.5 px-1.5 py-1 text-[10px] sm:text-xs relative min-w-[56px] shrink-0",
                 isActive ? "text-primary font-medium" : "text-muted-foreground"
@@ -83,7 +65,7 @@ export function MobileNav({ role, pendingLeaves = 0 }: MobileNavProps) {
                   {pendingLeaves > 9 ? "9+" : pendingLeaves}
                 </span>
               )}
-            </Link>
+            </a>
           );
         })}
       </div>

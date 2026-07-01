@@ -54,7 +54,7 @@ test.describe("2. Staff Dashboard", () => {
     await page.getByRole("button", { name: "Sign In" }).click();
     await expect(page).toHaveURL(/my-attendance/, { timeout: 20000 });
 
-    await page.getByRole("button", { name: "Register face for kiosk" }).click();
+    await page.getByRole("link", { name: "Register face for kiosk" }).click();
     await expect(page).toHaveURL(/\/profile/, { timeout: 15000 });
     await expect(page.getByRole("heading", { name: "My Profile", level: 2 })).toBeVisible({
       timeout: 15000,
