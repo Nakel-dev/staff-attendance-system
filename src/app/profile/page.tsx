@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAuthenticatedProfile } from "@/lib/supabase/profile";
 import { AUTH_PATH } from "@/constants";
+import { format } from "date-fns";
 import { redirect } from "next/navigation";
 import { StaffCard } from "@/components/staff/StaffCard";
 import { StaffForm } from "@/components/staff/StaffForm";
@@ -8,43 +9,51 @@ import { StaffProfileView } from "@/components/staff/StaffProfileView";
 import { FaceEnrollmentCard } from "@/components/profile/FaceEnrollmentCard";
 import { MfaSettingsCard } from "@/components/profile/MfaSettingsCard";
 
+export const dynamic = "force-dynamic";
+
 export default async function ProfilePage({
   searchParams,
 }: {
   searchParams: { enroll?: string };
 }) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect(AUTH_PATH);
 
   const profile = await getAuthenticatedProfile(user.id);
-  if (!profile) redirect(AUTH_PATH);
+  if (!profile) redirect(`${AUTH_PATH}?error=profile-not-found`);
 
   const now = new Date();
   const month = now.getMonth() + 1;
   const year = now.getFullYear();
-  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
-  const monthEnd = `${year}-${String(month).padStart(2, "0")}-31`;
+  const monthStart = format(new Date(year, month - 1, 1), "yyyy-MM-dd");
+  const monthEnd = format(new Date(year, month, 0), "yyyy-MM-dd");
 
-  const { data: monthAttendance } = await supabase
-    .from("attendance")
-    .select("*")
-    .eq("staff_id", profile.id)
-    .gte("date", monthStart)
-    .lte("date", monthEnd)
-    .order("date", { ascending: false });
-
-  const { data: allAttendance } = await supabase
-    .from("attendance")
-    .select("*")
-    .eq("staff_id", profile.id)
-    .order("date", { ascending: false });
-
-  const { data: leaves } = await supabase
-    .from("leaves")
-    .select("*")
-    .eq("staff_id", profile.id)
-    .order("created_at", { ascending: false });
+  const [
+    { data: monthAttendance },
+    { data: allAttendance },
+    { data: leaves },
+  ] = await Promise.all([
+    supabase
+      .from("attendance")
+      .select("*")
+      .eq("staff_id", profile.id)
+      .gte("date", monthStart)
+      .lte("date", monthEnd)
+      .order("date", { ascending: false }),
+    supabase
+      .from("attendance")
+      .select("*")
+      .eq("staff_id", profile.id)
+      .order("date", { ascending: false }),
+    supabase
+      .from("leaves")
+      .select("*")
+      .eq("staff_id", profile.id)
+      .order("created_at", { ascending: false }),
+  ]);
 
   const isAdmin = profile.role === "admin";
 

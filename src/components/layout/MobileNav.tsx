@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -41,7 +41,6 @@ const staffLinks: NavLink[] = [
 
 export function MobileNav({ role, pendingLeaves = 0 }: MobileNavProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const links = role === "admin" ? adminLinks : staffLinks;
 
   return (
@@ -56,23 +55,6 @@ export function MobileNav({ role, pendingLeaves = 0 }: MobileNavProps) {
               key={link.href}
               href={link.href}
               prefetch
-              onClick={(event) => {
-                if (
-                  event.defaultPrevented ||
-                  event.button !== 0 ||
-                  event.metaKey ||
-                  event.ctrlKey ||
-                  event.shiftKey ||
-                  event.altKey
-                ) {
-                  return;
-                }
-                if (pathname !== link.href) {
-                  event.preventDefault();
-                  router.push(link.href);
-                  router.refresh();
-                }
-              }}
               className={cn(
                 "flex flex-col items-center gap-0.5 px-1.5 py-1 text-[10px] sm:text-xs relative min-w-[56px] shrink-0",
                 isActive ? "text-primary font-medium" : "text-muted-foreground"

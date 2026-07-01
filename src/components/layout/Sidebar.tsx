@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { AppNavLink } from "@/components/layout/AppNavLink";
-import { APP_NAME, AUTH_PATH, getHomePath } from "@/constants";
+import { APP_NAME, getHomePath } from "@/constants";
 import { logout } from "@/lib/actions/notifications";
 import type { LucideIcon } from "lucide-react";
 
@@ -55,14 +55,11 @@ const staffLinks: NavLink[] = [
 
 export function Sidebar({ role, organizationName, pendingLeaves = 0 }: SidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const links = role === "admin" ? adminLinks : staffLinks;
   const homeHref = getHomePath(role);
 
-  const handleLogout = async () => {
-    await logout();
-    router.push(AUTH_PATH);
-    router.refresh();
+  const handleLogout = () => {
+    void logout();
   };
 
   return (

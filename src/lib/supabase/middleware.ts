@@ -18,7 +18,8 @@ const SHARED_ROUTES = ["/profile", "/my-leaves"];
 const PUBLIC_ROUTES = ["/", AUTH_PATH, "/login", "/register", "/terms", "/privacy", "/kiosk"];
 const KIOSK_API_PREFIX = "/api/kiosk";
 const AUTH_SUBROUTES = ["/auth/reset-password", "/auth/callback"];
-const RATE_LIMITED_PREFIXES = [AUTH_PATH, "/auth/reset-password"];
+const AUTH_RATE_LIMIT_POST_PATHS = [AUTH_PATH, "/auth/reset-password"];
+const AUTH_RATE_LIMIT_EXEMPT = ["/auth/callback"];
 
 function getClientIp(request: NextRequest): string {
   const forwarded = request.headers.get("x-forwarded-for");
@@ -36,9 +37,19 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
-  if (RATE_LIMITED_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+  const isAuthRateLimitExempt = AUTH_RATE_LIMIT_EXEMPT.some((path) =>
+    pathname.startsWith(path)
+  );
+  const shouldRateLimitAuthPost =
+    request.method === "POST" &&
+    !isAuthRateLimitExempt &&
+    AUTH_RATE_LIMIT_POST_PATHS.some(
+      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+    );
+
+  if (shouldRateLimitAuthPost) {
     const ip = getClientIp(request);
-    const limit = rateLimit(`auth:${ip}`, 20, 60_000);
+    const limit = rateLimit(`auth-post:${ip}:${pathname}`, 30, 60_000);
     if (!limit.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please wait and try again." },

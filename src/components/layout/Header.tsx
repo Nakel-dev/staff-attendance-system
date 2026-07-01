@@ -17,7 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { getInitials, timeAgo } from "@/lib/utils/formatDate";
 import { markAllNotificationsRead, markNotificationRead, logout } from "@/lib/actions/notifications";
 import type { Notification, Profile } from "@/lib/types";
-import { AUTH_PATH, getHomePath } from "@/constants";
+import { getHomePath } from "@/constants";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -34,10 +34,8 @@ export function Header({ title, profile, notifications, profilePath }: HeaderPro
   const unreadCount = notifications.filter((n) => !n.is_read).length;
   const homeHref = getHomePath(profile.role);
 
-  const handleLogout = async () => {
-    await logout();
-    router.push(AUTH_PATH);
-    router.refresh();
+  const handleLogout = () => {
+    void logout();
   };
 
   const handleMarkRead = async (id: string) => {
