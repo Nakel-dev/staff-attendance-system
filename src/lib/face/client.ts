@@ -1,6 +1,7 @@
 "use client";
 
 let modelsLoaded = false;
+let registrationModelsLoaded = false;
 let tfReady = false;
 
 const MODEL_URL = "/models";
@@ -56,6 +57,64 @@ export async function loadFaceModels() {
     }
   }
   modelsLoaded = true;
+}
+
+async function loadRegistrationModelsFrom(url: string) {
+  const faceapi = await import("@vladmandic/face-api");
+  await initTensorFlow(faceapi);
+  await Promise.all([
+    faceapi.nets.tinyFaceDetector.loadFromUri(url),
+    faceapi.nets.ssdMobilenetv1.loadFromUri(url),
+    faceapi.nets.faceLandmark68Net.loadFromUri(url),
+    faceapi.nets.faceRecognitionNet.loadFromUri(url),
+  ]);
+  return faceapi;
+}
+
+export async function loadFaceRegistrationModels() {
+  if (registrationModelsLoaded) {
+    return import("@vladmandic/face-api");
+  }
+  try {
+    await loadRegistrationModelsFrom(MODEL_URL);
+  } catch (localError) {
+    try {
+      await loadRegistrationModelsFrom(
+        "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model"
+      );
+    } catch {
+      tfReady = false;
+      throw localError instanceof Error
+        ? localError
+        : new Error("Failed to load face models");
+    }
+  }
+  registrationModelsLoaded = true;
+  modelsLoaded = true;
+  return import("@vladmandic/face-api");
+}
+
+export async function detectFacePose(video: HTMLVideoElement) {
+  const faceapi = await loadFaceRegistrationModels();
+  return faceapi
+    .detectSingleFace(
+      video,
+      new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 })
+    )
+    .withFaceLandmarks();
+}
+
+export async function detectFaceDescriptor(video: HTMLVideoElement) {
+  const faceapi = await loadFaceRegistrationModels();
+  const detection = await faceapi
+    .detectSingleFace(video)
+    .withFaceLandmarks()
+    .withFaceDescriptor();
+  if (!detection) return null;
+  return {
+    descriptor: Array.from(detection.descriptor),
+    landmarks: detection.landmarks,
+  };
 }
 
 async function detectSingleDescriptor(input: HTMLImageElement | HTMLVideoElement) {

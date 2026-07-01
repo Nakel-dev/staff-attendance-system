@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { AppNavLink } from "@/components/layout/AppNavLink";
 import { APP_NAME, AUTH_PATH, getHomePath } from "@/constants";
 import { logout } from "@/lib/actions/notifications";
 import type { LucideIcon } from "lucide-react";
@@ -89,25 +90,26 @@ export function Sidebar({ role, organizationName, pendingLeaves = 0 }: SidebarPr
             const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
             const showBadge = !!link.badge && pendingLeaves > 0;
             return (
-              <Link
+              <AppNavLink
                 key={link.href}
                 href={link.href}
-                prefetch
+                label={link.label}
+                icon={Icon}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   isActive
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                 )}
-              >
-                <Icon className="h-4 w-4" />
-                <span className="flex-1">{link.label}</span>
-                {showBadge && (
-                  <span className="bg-destructive text-destructive-foreground text-xs rounded-full px-2 py-0.5">
-                    {pendingLeaves}
-                  </span>
-                )}
-              </Link>
+                iconClassName="h-4 w-4"
+                badge={
+                  showBadge ? (
+                    <span className="bg-destructive text-destructive-foreground text-xs rounded-full px-2 py-0.5">
+                      {pendingLeaves}
+                    </span>
+                  ) : undefined
+                }
+              />
             );
           })}
         </nav>

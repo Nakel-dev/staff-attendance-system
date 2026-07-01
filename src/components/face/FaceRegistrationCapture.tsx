@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Loader2, ScanFace } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { loadFaceModels } from "@/lib/face/client";
+import {
+  detectFaceDescriptor,
+  detectFacePose,
+  loadFaceRegistrationModels,
+} from "@/lib/face/client";
 import { estimateHeadPose, matchesTargetAngle } from "@/lib/face/pose";
 import { validateLivenessFrames } from "@/lib/face/liveness";
 import {
@@ -29,6 +33,10 @@ interface FaceRegistrationCaptureProps {
   disabled?: boolean;
 }
 
+const POSE_INTERVAL_MS = 900;
+const HOLD_MS = 900;
+const DESCRIPTOR_SAMPLE_MS = 1200;
+
 export function FaceRegistrationCapture({ onComplete, disabled }: FaceRegistrationCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -39,6 +47,8 @@ export function FaceRegistrationCapture({ onComplete, disabled }: FaceRegistrati
   const stepRef = useRef(0);
   const holdStartRef = useRef<number | null>(null);
   const completingRef = useRef(false);
+  const detectingRef = useRef(false);
+  const lastDescriptorSampleRef = useRef(0);
 
   const [sequence] = useState(() => shuffleAngles());
   const [stepIndex, setStepIndex] = useState(0);
@@ -83,18 +93,30 @@ export function FaceRegistrationCapture({ onComplete, disabled }: FaceRegistrati
       referenceClipBlob: blob,
     });
     setStatus("Registration capture complete");
-  }, [onComplete, sequence]);
+    stopCamera();
+  }, [onComplete, sequence, stopCamera]);
 
   const startCamera = async () => {
     setError(null);
     setLoading(true);
+    setStatus("Loading face models…");
     completingRef.current = false;
+    detectingRef.current = false;
     capturedRef.current = [];
     stepRef.current = 0;
+    holdStartRef.current = null;
+    lastDescriptorSampleRef.current = 0;
     setCaptured([]);
     setStepIndex(0);
+    setHoldProgress(0);
+
     try {
+      if (typeof window !== "undefined" && !window.isSecureContext) {
+        throw new Error("Camera requires HTTPS or localhost.");
+      }
       stopCamera();
+      await loadFaceRegistrationModels();
+      setStatus("Starting camera…");
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false,
@@ -104,7 +126,6 @@ export function FaceRegistrationCapture({ onComplete, disabled }: FaceRegistrati
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
-      await loadFaceModels();
       chunksRef.current = [];
       frameDescriptorsRef.current = [];
       const recorder = new MediaRecorder(stream, {
@@ -115,12 +136,13 @@ export function FaceRegistrationCapture({ onComplete, disabled }: FaceRegistrati
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
-      recorder.start(250);
+      recorder.start(400);
       recorderRef.current = recorder;
       setCameraReady(true);
       setStatus(FACE_ANGLE_PROMPTS[sequence[0]]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Camera failed");
+      stopCamera();
     } finally {
       setLoading(false);
     }
@@ -128,53 +150,75 @@ export function FaceRegistrationCapture({ onComplete, disabled }: FaceRegistrati
 
   useEffect(() => {
     if (!cameraReady || completingRef.current) return;
-    const interval = setInterval(async () => {
-      const video = videoRef.current;
-      if (!video || video.readyState < 2 || completingRef.current) return;
 
-      const faceapi = await import("@vladmandic/face-api");
-      const detection = await faceapi
-        .detectSingleFace(video)
-        .withFaceLandmarks()
-        .withFaceDescriptor();
-      if (!detection) {
-        holdStartRef.current = null;
-        setHoldProgress(0);
-        return;
-      }
+    const interval = setInterval(() => {
+      void (async () => {
+        if (detectingRef.current || completingRef.current) return;
+        const video = videoRef.current;
+        if (!video || video.readyState < 2) return;
 
-      frameDescriptorsRef.current.push(Array.from(detection.descriptor));
-      const angle = sequence[stepRef.current];
-      const pose = estimateHeadPose(detection.landmarks);
+        detectingRef.current = true;
+        try {
+          const detection = await detectFacePose(video);
+          if (!detection) {
+            holdStartRef.current = null;
+            setHoldProgress(0);
+            return;
+          }
 
-      if (!matchesTargetAngle(pose, angle)) {
-        holdStartRef.current = null;
-        setHoldProgress(0);
-        return;
-      }
+          const now = Date.now();
+          if (now - lastDescriptorSampleRef.current >= DESCRIPTOR_SAMPLE_MS) {
+            lastDescriptorSampleRef.current = now;
+            const full = await detectFaceDescriptor(video);
+            if (full) frameDescriptorsRef.current.push(full.descriptor);
+          }
 
-      if (!holdStartRef.current) holdStartRef.current = Date.now();
-      const elapsed = Date.now() - holdStartRef.current;
-      setHoldProgress(Math.min(100, Math.round((elapsed / 900) * 100)));
+          const angle = sequence[stepRef.current];
+          const pose = estimateHeadPose(detection.landmarks);
 
-      if (elapsed < 900) return;
+          if (!matchesTargetAngle(pose, angle)) {
+            holdStartRef.current = null;
+            setHoldProgress(0);
+            return;
+          }
 
-      const entry = { angle, descriptor: Array.from(detection.descriptor) };
-      capturedRef.current = [...capturedRef.current, entry];
-      setCaptured([...capturedRef.current]);
-      holdStartRef.current = null;
-      setHoldProgress(0);
+          if (!holdStartRef.current) holdStartRef.current = Date.now();
+          const elapsed = Date.now() - holdStartRef.current;
+          setHoldProgress(Math.min(100, Math.round((elapsed / HOLD_MS) * 100)));
 
-      if (stepRef.current + 1 >= sequence.length) {
-        clearInterval(interval);
-        void finishCapture();
-        return;
-      }
+          if (elapsed < HOLD_MS) return;
 
-      stepRef.current += 1;
-      setStepIndex(stepRef.current);
-      setStatus(FACE_ANGLE_PROMPTS[sequence[stepRef.current]]);
-    }, 300);
+          const full = await detectFaceDescriptor(video);
+          if (!full) {
+            holdStartRef.current = null;
+            setHoldProgress(0);
+            setStatus("Hold steady — face not clear enough. Try again.");
+            return;
+          }
+
+          const entry = { angle, descriptor: full.descriptor };
+          capturedRef.current = [...capturedRef.current, entry];
+          setCaptured([...capturedRef.current]);
+          holdStartRef.current = null;
+          setHoldProgress(0);
+
+          if (stepRef.current + 1 >= sequence.length) {
+            clearInterval(interval);
+            await finishCapture();
+            return;
+          }
+
+          stepRef.current += 1;
+          setStepIndex(stepRef.current);
+          setStatus(FACE_ANGLE_PROMPTS[sequence[stepRef.current]]);
+        } catch {
+          holdStartRef.current = null;
+          setHoldProgress(0);
+        } finally {
+          detectingRef.current = false;
+        }
+      })();
+    }, POSE_INTERVAL_MS);
 
     return () => clearInterval(interval);
   }, [cameraReady, finishCapture, sequence]);
@@ -236,7 +280,13 @@ export function FaceRegistrationCapture({ onComplete, disabled }: FaceRegistrati
       {!cameraReady && (
         <Button type="button" onClick={startCamera} disabled={disabled || loading} className="w-full">
           {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanFace className="mr-2 h-4 w-4" />}
-          Enable camera
+          {loading ? "Preparing camera…" : "Enable camera"}
+        </Button>
+      )}
+
+      {cameraReady && (
+        <Button type="button" variant="outline" className="w-full" onClick={stopCamera}>
+          Stop camera
         </Button>
       )}
 
