@@ -23,21 +23,27 @@ export function computeMotionScore(frameDescriptors: number[][]): number {
   return pairs > 0 ? total / pairs : 0;
 }
 
-export function validateLivenessFrames(frameDescriptors: number[][]): {
+export function validateLivenessFrames(
+  frameDescriptors: number[][],
+  options?: { minFrames?: number; minMotionScore?: number }
+): {
   passed: boolean;
   motionScore: number;
   reason?: string;
 } {
-  if (frameDescriptors.length < MIN_LIVENESS_FRAMES) {
+  const minFrames = options?.minFrames ?? MIN_LIVENESS_FRAMES;
+  const minMotion = options?.minMotionScore ?? MIN_MOTION_SCORE;
+
+  if (frameDescriptors.length < minFrames) {
     return {
       passed: false,
       motionScore: 0,
-      reason: `Need at least ${MIN_LIVENESS_FRAMES} live video frames`,
+      reason: `Need at least ${minFrames} live video frames`,
     };
   }
 
   const motionScore = computeMotionScore(frameDescriptors);
-  if (motionScore < MIN_MOTION_SCORE) {
+  if (motionScore < minMotion) {
     return {
       passed: false,
       motionScore,
