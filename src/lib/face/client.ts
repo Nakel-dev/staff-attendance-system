@@ -1,44 +1,19 @@
 "use client";
 
-let modelsLoaded = false;
+import type { FaceAngle } from "@/lib/kiosk/constants";
+import { estimateHeadPose, matchesTargetAngle } from "@/lib/face/pose";
+
 let registrationModelsLoaded = false;
+let recognitionModelLoaded = false;
 let tfReady = false;
 
 const MODEL_URL = "/models";
-const TINY_DETECTOR_OPTIONS = { inputSize: 224, scoreThreshold: 0.55 } as const;
-const DESCRIPTOR_DETECTOR_OPTIONS = { inputSize: 320, scoreThreshold: 0.5 } as const;
+const DESCRIPTOR_OPTIONS = { inputSize: 224, scoreThreshold: 0.5 } as const;
 
 let registrationFaceApi: typeof import("@vladmandic/face-api") | null = null;
 
-function yieldToBrowser(ms = 16): Promise<void> {
+function yieldToBrowser(ms = 32): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-let detectionCanvas: HTMLCanvasElement | null = null;
-let detectionCtx: CanvasRenderingContext2D | null = null;
-
-function getDetectionInput(
-  video: HTMLVideoElement,
-  forDescriptor = false
-): HTMLVideoElement | HTMLCanvasElement {
-  const w = video.videoWidth;
-  const h = video.videoHeight;
-  if (!w || !h) return video;
-
-  const maxDim = forDescriptor ? 384 : 256;
-  const scale = Math.min(1, maxDim / Math.max(w, h));
-  if (scale >= 1) return video;
-
-  if (!detectionCanvas) {
-    detectionCanvas = document.createElement("canvas");
-    detectionCtx = detectionCanvas.getContext("2d", { willReadFrequently: true });
-  }
-  if (!detectionCtx) return video;
-
-  detectionCanvas.width = Math.round(w * scale);
-  detectionCanvas.height = Math.round(h * scale);
-  detectionCtx.drawImage(video, 0, 0, detectionCanvas.width, detectionCanvas.height);
-  return detectionCanvas;
 }
 
 async function initTensorFlow(faceapi: typeof import("@vladmandic/face-api")) {
@@ -47,25 +22,157 @@ async function initTensorFlow(faceapi: typeof import("@vladmandic/face-api")) {
     setBackend: (backend: string) => Promise<boolean>;
     ready: () => Promise<void>;
   };
-  const backends = ["webgl", "cpu"] as const;
-  let initialized = false;
+  // CPU first — avoids WebGL shader compile freezes on many laptops.
+  const backends = ["cpu", "webgl"] as const;
   for (const backend of backends) {
     try {
       const ok = await tf.setBackend(backend);
       if (ok) {
         await tf.ready();
-        initialized = true;
-        break;
+        tfReady = true;
+        return;
       }
     } catch {
       // try next backend
     }
   }
-  if (!initialized) {
-    throw new Error("Could not initialize TensorFlow.js. Try refreshing the page.");
-  }
-  tfReady = true;
+  throw new Error("Could not initialize face AI. Refresh and try again.");
 }
+
+async function loadModelUrl(url: string) {
+  const faceapi = await import("@vladmandic/face-api");
+  await initTensorFlow(faceapi);
+  registrationFaceApi = faceapi;
+  await faceapi.nets.tinyFaceDetector.loadFromUri(url);
+  return faceapi;
+}
+
+async function loadRecognitionUrl(url: string) {
+  const faceapi = registrationFaceApi ?? (await import("@vladmandic/face-api"));
+  await initTensorFlow(faceapi);
+  registrationFaceApi = faceapi;
+  await faceapi.nets.faceRecognitionNet.loadFromUri(url);
+  recognitionModelLoaded = true;
+  return faceapi;
+}
+
+/** Load detector only — fast, used before first capture. */
+export async function loadRegistrationDetector() {
+  if (registrationModelsLoaded && registrationFaceApi) return registrationFaceApi;
+  try {
+    await loadModelUrl(MODEL_URL);
+  } catch {
+    await loadModelUrl("https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model");
+  }
+  registrationModelsLoaded = true;
+  return registrationFaceApi!;
+}
+
+/** Load recognition net on first capture (heavier). */
+export async function loadRegistrationRecognitionModel() {
+  if (recognitionModelLoaded && registrationFaceApi) return registrationFaceApi;
+  await loadRegistrationDetector();
+  try {
+    await loadRecognitionUrl(MODEL_URL);
+  } catch {
+    await loadRecognitionUrl("https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model");
+  }
+  return registrationFaceApi!;
+}
+
+export async function loadFaceRegistrationModels() {
+  return loadRegistrationRecognitionModel();
+}
+
+export function freezeVideoFrame(video: HTMLVideoElement, maxDim = 280): HTMLCanvasElement {
+  const w = video.videoWidth;
+  const h = video.videoHeight;
+  const canvas = document.createElement("canvas");
+  if (!w || !h) {
+    canvas.width = 280;
+    canvas.height = 280;
+    return canvas;
+  }
+  const scale = Math.min(1, maxDim / Math.max(w, h));
+  canvas.width = Math.round(w * scale);
+  canvas.height = Math.round(h * scale);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (ctx) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+export type CaptureAngleResult =
+  | { ok: true; descriptor: number[]; angle: FaceAngle }
+  | { ok: false; reason: string };
+
+export async function captureRegistrationAngle(
+  video: HTMLVideoElement,
+  expectedAngle: FaceAngle
+): Promise<CaptureAngleResult> {
+  await yieldToBrowser(64);
+  const faceapi = await loadRegistrationRecognitionModel();
+  await yieldToBrowser(32);
+
+  const canvas = freezeVideoFrame(video, 280);
+  const options = new faceapi.TinyFaceDetectorOptions(DESCRIPTOR_OPTIONS);
+
+  const tf = faceapi.tf as unknown as {
+    engine: () => { startScope: () => void; endScope: () => void };
+  };
+
+  tf.engine().startScope();
+  try {
+    const detection = await faceapi
+      .detectSingleFace(canvas, options)
+      .withFaceLandmarks(true)
+      .withFaceDescriptor();
+
+    if (!detection?.descriptor) {
+      return {
+        ok: false,
+        reason: "No face detected. Center your face in the circle with good lighting.",
+      };
+    }
+
+    const pose = estimateHeadPose(detection.landmarks);
+    if (!matchesTargetAngle(pose, expectedAngle)) {
+      return {
+        ok: false,
+        reason: angleHint(expectedAngle),
+      };
+    }
+
+    return {
+      ok: true,
+      descriptor: Array.from(detection.descriptor),
+      angle: expectedAngle,
+    };
+  } finally {
+    tf.engine().endScope();
+    await yieldToBrowser(16);
+  }
+}
+
+function angleHint(angle: FaceAngle): string {
+  switch (angle) {
+    case "front":
+      return "Look straight at the camera, then tap Capture again.";
+    case "left":
+      return "Turn your head to YOUR left (camera sees right cheek), then tap Capture.";
+    case "right":
+      return "Turn your head to YOUR right (camera sees left cheek), then tap Capture.";
+    case "up":
+      return "Tilt your head up slightly, then tap Capture.";
+    case "down":
+      return "Tilt your head down slightly, then tap Capture.";
+    default:
+      return "Adjust your head to match the prompt, then tap Capture.";
+  }
+}
+
+// --- Legacy exports used elsewhere ---
+
+let modelsLoaded = false;
 
 async function loadModelsFrom(url: string) {
   const faceapi = await import("@vladmandic/face-api");
@@ -81,91 +188,33 @@ export async function loadFaceModels() {
   if (modelsLoaded) return;
   try {
     await loadModelsFrom(MODEL_URL);
-  } catch (localError) {
-    try {
-      await loadModelsFrom("https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model");
-    } catch {
-      tfReady = false;
-      throw localError instanceof Error
-        ? localError
-        : new Error("Failed to load face models");
-    }
+  } catch {
+    await loadModelsFrom("https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model");
   }
   modelsLoaded = true;
 }
 
-async function loadRegistrationModelsFrom(url: string) {
-  const faceapi = await import("@vladmandic/face-api");
-  await initTensorFlow(faceapi);
-  await Promise.all([
-    faceapi.nets.tinyFaceDetector.loadFromUri(url),
-    faceapi.nets.faceLandmark68TinyNet.loadFromUri(url),
-    faceapi.nets.faceRecognitionNet.loadFromUri(url),
-  ]);
-  registrationFaceApi = faceapi;
-  return faceapi;
-}
-
-export async function loadFaceRegistrationModels() {
-  if (registrationModelsLoaded && registrationFaceApi) {
-    return registrationFaceApi;
-  }
-  try {
-    await loadRegistrationModelsFrom(MODEL_URL);
-  } catch (localError) {
-    try {
-      await loadRegistrationModelsFrom(
-        "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model"
-      );
-    } catch {
-      tfReady = false;
-      throw localError instanceof Error
-        ? localError
-        : new Error("Failed to load face models");
-    }
-  }
-  registrationModelsLoaded = true;
-  modelsLoaded = true;
-  return registrationFaceApi!;
-}
-
-/** Fast pose tracking — tiny detector + tiny landmarks only (no descriptor). */
 export async function detectRegistrationPose(video: HTMLVideoElement) {
-  const faceapi = await loadFaceRegistrationModels();
-  const input = getDetectionInput(video, false);
-  const options = new faceapi.TinyFaceDetectorOptions(TINY_DETECTOR_OPTIONS);
-  const detection = await faceapi
-    .detectSingleFace(input, options)
-    .withFaceLandmarks(true);
+  await loadRegistrationDetector();
+  const faceapi = registrationFaceApi!;
+  const canvas = freezeVideoFrame(video, 224);
+  const options = new faceapi.TinyFaceDetectorOptions(DESCRIPTOR_OPTIONS);
+  const detection = await faceapi.detectSingleFace(canvas, options).withFaceLandmarks(true);
   if (!detection) return null;
   return { landmarks: detection.landmarks };
 }
 
-/** Heavy path — run once per captured angle only. */
 export async function detectRegistrationDescriptor(video: HTMLVideoElement) {
-  const faceapi = await loadFaceRegistrationModels();
-  await yieldToBrowser();
-  const input = getDetectionInput(video, true);
-  const options = new faceapi.TinyFaceDetectorOptions(DESCRIPTOR_DETECTOR_OPTIONS);
-  const detection = await faceapi
-    .detectSingleFace(input, options)
-    .withFaceLandmarks(true)
-    .withFaceDescriptor();
-  if (!detection?.descriptor) return null;
-  return {
-    landmarks: detection.landmarks,
-    descriptor: Array.from(detection.descriptor),
-  };
+  const result = await captureRegistrationAngle(video, "front");
+  if (!result.ok) return null;
+  return { descriptor: result.descriptor, landmarks: null };
 }
 
-/** @deprecated Use detectRegistrationPose or detectRegistrationDescriptor */
 export async function detectRegistrationFrame(
   video: HTMLVideoElement,
   withDescriptor: boolean
 ) {
-  if (withDescriptor) {
-    return detectRegistrationDescriptor(video);
-  }
+  if (withDescriptor) return detectRegistrationDescriptor(video);
   return detectRegistrationPose(video);
 }
 
@@ -177,7 +226,7 @@ export async function detectFaceDescriptor(video: HTMLVideoElement) {
   return detectRegistrationDescriptor(video);
 }
 
-async function detectSingleDescriptor(input: HTMLImageElement | HTMLVideoElement) {
+async function detectSingleDescriptor(input: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement) {
   const faceapi = await import("@vladmandic/face-api");
   await initTensorFlow(faceapi);
   const detection = await faceapi
