@@ -16,7 +16,7 @@
     "migrate": "ts-node --transpile-only -r dotenv/config scripts/migrate.ts",
     "migrate:secure": "ts-node --transpile-only -r dotenv/config scripts/apply-migrations.ts 005 006 007",
     "screenshots": "node scripts/capture-screenshots.mjs",
-    "security:audit": "npm audit --audit-level=high",
+    "test:prelaunch": "playwright test tests/prelaunch.spec.ts",
     "desktop:prepare": "npm run build && node scripts/prepare-standalone.js",
     "desktop:dev": "npm run desktop:prepare && electron desktop/main.cjs",
     "desktop:build": "npm run desktop:prepare && electron-builder --config electron-builder.json"
@@ -54,6 +54,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.0",
     "@types/node": "^20",
     "@types/pg": "^8.20.0",
     "@types/react": "^18",

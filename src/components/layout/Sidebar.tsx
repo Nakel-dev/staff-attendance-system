@@ -8,18 +8,16 @@ import {
   ClipboardCheck,
   CalendarDays,
   BarChart3,
-  LogOut,
   User,
   Building2,
   ScanFace,
   Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { AppNavLink } from "@/components/layout/AppNavLink";
+import { LogoutButton } from "@/components/layout/LogoutButton";
 import { APP_NAME, getHomePath } from "@/constants";
-import { logout } from "@/lib/actions/notifications";
 import type { LucideIcon } from "lucide-react";
 
 interface SidebarProps {
@@ -57,10 +55,6 @@ export function Sidebar({ role, organizationName, pendingLeaves = 0 }: SidebarPr
   const pathname = usePathname();
   const links = role === "admin" ? adminLinks : staffLinks;
   const homeHref = getHomePath(role);
-
-  const handleLogout = () => {
-    void logout();
-  };
 
   return (
     <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 z-30 border-r bg-card no-print">
@@ -112,10 +106,7 @@ export function Sidebar({ role, organizationName, pendingLeaves = 0 }: SidebarPr
         </nav>
         <Separator />
         <div className="p-4">
-          <Button variant="ghost" className="w-full justify-start gap-3 px-3" onClick={handleLogout}>
-            <LogOut className="h-4 w-4" />
-            Logout
-          </Button>
+          <LogoutButton className="w-full justify-start gap-3 px-3" />
         </div>
       </div>
     </aside>

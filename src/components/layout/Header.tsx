@@ -15,9 +15,10 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { getInitials, timeAgo } from "@/lib/utils/formatDate";
-import { markAllNotificationsRead, markNotificationRead, logout } from "@/lib/actions/notifications";
+import { markAllNotificationsRead, markNotificationRead } from "@/lib/actions/notifications";
 import type { Notification, Profile } from "@/lib/types";
 import { getHomePath } from "@/constants";
+import { navigateToLogout } from "@/lib/auth/logout";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -35,7 +36,7 @@ export function Header({ title, profile, notifications, profilePath }: HeaderPro
   const homeHref = getHomePath(profile.role);
 
   const handleLogout = () => {
-    void logout();
+    navigateToLogout();
   };
 
   const handleMarkRead = async (id: string) => {
