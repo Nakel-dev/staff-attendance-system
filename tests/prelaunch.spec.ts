@@ -39,7 +39,7 @@ test.describe("2. Staff Dashboard", () => {
     await page.getByRole("button", { name: "Sign In" }).click();
     await expect(page).toHaveURL(/my-attendance/, { timeout: 20000 });
 
-    await page.getByRole("button", { name: "Logout" }).click();
+    await page.getByRole("button", { name: "Logout" }).click({ force: true });
     await expect(page).toHaveURL(/\/auth/, { timeout: 15000 });
     await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
 
@@ -54,12 +54,26 @@ test.describe("2. Staff Dashboard", () => {
     await page.getByRole("button", { name: "Sign In" }).click();
     await expect(page).toHaveURL(/my-attendance/, { timeout: 20000 });
 
-    await page.goto(`${BASE_URL}/profile`);
+    await page.getByRole("button", { name: "Register face for kiosk" }).click();
     await expect(page).toHaveURL(/\/profile/, { timeout: 15000 });
     await expect(page.getByRole("heading", { name: "My Profile", level: 2 })).toBeVisible({
       timeout: 15000,
     });
     await expect(page.getByRole("heading", { name: "Face registration" })).toBeVisible();
+  });
+
+  test("my leaves page loads for staff", async ({ page }) => {
+    await page.goto(`${BASE_URL}/auth`);
+    await page.getByLabel("Email").fill(STAFF_EMAIL);
+    await page.getByLabel("Password").fill(STAFF_PASSWORD);
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await expect(page).toHaveURL(/my-attendance/, { timeout: 20000 });
+
+    await page.getByRole("link", { name: "My Leaves" }).first().click();
+    await expect(page).toHaveURL(/my-leaves/, { timeout: 15000 });
+    await expect(page.getByRole("heading", { name: "My Leaves", level: 2 })).toBeVisible({
+      timeout: 15000,
+    });
   });
 });
 

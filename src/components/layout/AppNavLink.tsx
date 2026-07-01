@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
+import { navigateTo } from "@/lib/navigation/hard-nav";
 import { cn } from "@/lib/utils";
 
 interface AppNavLinkProps {
@@ -28,7 +29,22 @@ export function AppNavLink({
   return (
     <Link
       href={href}
-      prefetch
+      prefetch={false}
+      onClick={(event) => {
+        if (
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey ||
+          pathname === href
+        ) {
+          return;
+        }
+        event.preventDefault();
+        navigateTo(href);
+      }}
       className={cn(className, isActive && "active-nav")}
       aria-current={isActive ? "page" : undefined}
     >

@@ -51,7 +51,7 @@ export function AppShell({
           notifications={notifications}
           profilePath="/profile"
         />
-        <main className="p-4 md:p-6 pb-24 md:pb-6 max-w-7xl mx-auto w-full">
+        <main key={pathname} className="p-4 md:p-6 pb-24 md:pb-6 max-w-7xl mx-auto w-full">
           {children}
         </main>
       </div>

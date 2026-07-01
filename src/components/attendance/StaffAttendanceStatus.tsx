@@ -2,7 +2,9 @@
 
 import { format } from "date-fns";
 import { Monitor, ScanFace } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { navigateTo } from "@/lib/navigation/hard-nav";
 import type { Attendance } from "@/lib/types";
 
 interface StaffAttendanceStatusProps {
@@ -41,10 +43,14 @@ export function StaffAttendanceStatus({ todayRecord }: StaffAttendanceStatusProp
             <span className="font-medium capitalize">{todayRecord?.status || "Not marked"}</span>
           </div>
         </div>
-        <p className="flex items-center gap-2 text-xs text-muted-foreground">
-          <ScanFace className="h-4 w-4" />
-          Register or update your face under Profile before using the kiosk.
-        </p>
+        <Button
+          type="button"
+          className="w-full sm:w-auto"
+          onClick={() => navigateTo("/profile?enroll=1")}
+        >
+          <ScanFace className="mr-2 h-4 w-4" />
+          Register face for kiosk
+        </Button>
       </CardContent>
     </Card>
   );
