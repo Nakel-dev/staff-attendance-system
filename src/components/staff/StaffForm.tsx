@@ -39,6 +39,8 @@ interface FormState {
   department: string;
   role: Role;
   date_joined: string;
+  employee_code: string;
+  kiosk_pin: string;
 }
 
 interface FormErrors {
@@ -46,9 +48,10 @@ interface FormErrors {
   email?: string;
   department?: string;
   date_joined?: string;
+  kiosk_pin?: string;
 }
 
-function validateForm(data: FormState): FormErrors {
+function validateForm(data: FormState, isEdit: boolean): FormErrors {
   const errors: FormErrors = {};
   if (!data.full_name.trim()) errors.full_name = "Full name is required";
   if (!data.email.trim()) {
@@ -58,6 +61,12 @@ function validateForm(data: FormState): FormErrors {
   }
   if (!data.department) errors.department = "Department is required";
   if (!data.date_joined) errors.date_joined = "Date joined is required";
+  if (!isEdit && data.kiosk_pin && data.kiosk_pin.length !== 4) {
+    errors.kiosk_pin = "PIN must be 4 digits";
+  }
+  if (isEdit && data.kiosk_pin && data.kiosk_pin.length !== 4) {
+    errors.kiosk_pin = "PIN must be 4 digits";
+  }
   return errors;
 }
 
@@ -72,6 +81,8 @@ export function StaffForm({ profile, onSuccess }: StaffFormProps) {
     department: profile?.department || "",
     role: profile?.role || "staff",
     date_joined: profile?.date_joined || format(new Date(), "yyyy-MM-dd"),
+    employee_code: profile?.employee_code || "",
+    kiosk_pin: "",
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -86,7 +97,7 @@ export function StaffForm({ profile, onSuccess }: StaffFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const validationErrors = validateForm(form);
+    const validationErrors = validateForm(form, isEdit);
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
       return;
@@ -99,6 +110,8 @@ export function StaffForm({ profile, onSuccess }: StaffFormProps) {
       department: form.department,
       role: form.role,
       date_joined: form.date_joined,
+      employee_code: form.employee_code.trim() || undefined,
+      kiosk_pin: form.kiosk_pin.trim() || undefined,
     };
     const result = isEdit
       ? await updateStaffMember(profile!.id, payload)
@@ -199,6 +212,30 @@ export function StaffForm({ profile, onSuccess }: StaffFormProps) {
               <SelectItem value="admin">Admin</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="employee_code">Employee ID (optional)</Label>
+          <Input
+            id="employee_code"
+            value={form.employee_code}
+            onChange={(e) => updateField("employee_code", e.target.value)}
+            placeholder="EMP-0042"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="kiosk_pin">
+            Kiosk PIN {isEdit ? "(leave blank to keep current)" : "(4 digits)"}
+          </Label>
+          <Input
+            id="kiosk_pin"
+            type="password"
+            inputMode="numeric"
+            maxLength={4}
+            value={form.kiosk_pin}
+            onChange={(e) => updateField("kiosk_pin", e.target.value.replace(/\D/g, "").slice(0, 4))}
+            placeholder="1234"
+          />
+          {errors.kiosk_pin && <p className="text-sm text-destructive">{errors.kiosk_pin}</p>}
         </div>
         <div className="space-y-2">
           <Label htmlFor="date_joined">Date Joined</Label>

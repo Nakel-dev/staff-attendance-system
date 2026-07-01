@@ -126,6 +126,7 @@ export interface AttendanceRecord {
   match_status: "auto_matched" | "manual_override" | "rejected";
   liveness_passed: boolean;
   liveness_score?: number | null;
+  photo_capture_url?: string | null;
   kiosk_device_id: string;
   created_at: string;
 }

@@ -1,16 +1,13 @@
 const DB_NAME = "attendpro-kiosk-queue";
 const STORE_NAME = "pending-clocks";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export interface QueuedClockPayload {
   id: string;
   staffId: string;
   attemptType: "check_in" | "check_out";
-  frameDescriptors: number[][];
-  liveDescriptor: number[];
-  livenessClipUrl?: string;
-  liveCaptureUrl?: string;
-  frameMetadata?: Record<string, unknown>;
+  pin: string;
+  photoCaptureUrl?: string;
   createdAt: string;
 }
 
@@ -19,9 +16,10 @@ function openDb(): Promise<IDBDatabase> {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: "id" });
+      if (db.objectStoreNames.contains(STORE_NAME)) {
+        db.deleteObjectStore(STORE_NAME);
       }
+      db.createObjectStore(STORE_NAME, { keyPath: "id" });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);

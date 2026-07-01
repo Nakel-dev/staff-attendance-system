@@ -1,20 +1,23 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { validateLivenessFrames } from "@/lib/face/liveness";
-import { matchAgainstEmbeddings } from "@/lib/kiosk/face-match";
-import { isValidFaceDescriptor } from "@/lib/utils/faceMatch";
+import { verifyKioskPin } from "@/lib/kiosk/pin";
 import type { KioskSessionContext } from "@/lib/kiosk/session";
 
 export type ClockAttemptType = "check_in" | "check_out";
+
+export type ReviewReason =
+  | "missing_photo"
+  | "duplicate_day"
+  | "photo_review"
+  | "low_confidence"
+  | "no_match"
+  | "liveness_fail";
 
 export interface ProcessClockInput {
   session: KioskSessionContext;
   staffId: string;
   attemptType: ClockAttemptType;
-  frameDescriptors: number[][];
-  liveDescriptor: number[];
-  livenessClipUrl?: string;
-  liveCaptureUrl?: string;
-  frameMetadata?: Record<string, unknown>;
+  pin: string;
+  photoCaptureUrl?: string;
 }
 
 export interface ProcessClockResult {
@@ -23,8 +26,6 @@ export interface ProcessClockResult {
   message: string;
   recordId?: string;
   reviewId?: string;
-  matchDistance?: number;
-  confidenceScore?: number;
 }
 
 async function logAttempt(
@@ -39,8 +40,6 @@ async function logAttempt(
     staff_id: input.staffId,
     attempt_type: input.attemptType,
     outcome,
-    confidence_score: typeof extra.confidenceScore === "number" ? extra.confidenceScore : null,
-    best_match_distance: typeof extra.bestDistance === "number" ? extra.bestDistance : null,
     metadata: extra,
   });
 }
@@ -58,12 +57,77 @@ async function getLastAcceptedType(staffId: string): Promise<ClockAttemptType | 
   return (data?.type as ClockAttemptType) || null;
 }
 
+async function hasSameDayAcceptedRecord(
+  staffId: string,
+  attemptType: ClockAttemptType
+): Promise<boolean> {
+  const admin = createAdminClient();
+  const dayStart = new Date();
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+  const { data } = await admin
+    .from("attendance_records")
+    .select("id")
+    .eq("staff_id", staffId)
+    .eq("type", attemptType)
+    .in("match_status", ["auto_matched", "manual_override"])
+    .gte("server_timestamp", dayStart.toISOString())
+    .lt("server_timestamp", dayEnd.toISOString())
+    .limit(1);
+
+  return (data?.length ?? 0) > 0;
+}
+
+async function enqueueReview(
+  input: ProcessClockInput,
+  reason: ReviewReason,
+  staff: { avatar_url?: string | null },
+  extra: Record<string, unknown> = {}
+) {
+  const admin = createAdminClient();
+  const { data: review } = await admin
+    .from("review_queue")
+    .insert({
+      organization_id: input.session.organizationId,
+      staff_id: input.staffId,
+      kiosk_device_id: input.session.kioskId,
+      attempt_type: input.attemptType,
+      reason,
+      status: "pending",
+      live_capture_url: input.photoCaptureUrl || null,
+      stored_reference_url: staff.avatar_url || null,
+      frame_metadata: extra,
+    })
+    .select("id")
+    .single();
+
+  await logAttempt(input, reason, { reviewId: review?.id, ...extra });
+
+  const messages: Record<ReviewReason, string> = {
+    missing_photo: "No photo captured. Sent for admin review.",
+    duplicate_day: "Already clocked this action today. Sent for admin review.",
+    photo_review: "No profile photo on file. Sent for admin review.",
+    low_confidence: "Needs manual review.",
+    no_match: "Needs manual review.",
+    liveness_fail: "Needs manual review.",
+  };
+
+  return {
+    success: false as const,
+    status: "review" as const,
+    message: messages[reason],
+    reviewId: review?.id,
+  };
+}
+
 export async function processKioskClock(input: ProcessClockInput): Promise<ProcessClockResult> {
   const admin = createAdminClient();
 
   const { data: staff } = await admin
     .from("profiles")
-    .select("id, full_name, is_active, organization_id")
+    .select("id, full_name, is_active, organization_id, kiosk_pin_hash, avatar_url")
     .eq("id", input.staffId)
     .maybeSingle();
 
@@ -77,15 +141,27 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
     return { success: false, status: "rejected", message: "Staff does not belong to this organization." };
   }
 
+  if (!staff.kiosk_pin_hash) {
+    await logAttempt(input, "invalid_pin");
+    return {
+      success: false,
+      status: "rejected",
+      message: "No kiosk PIN set. Ask your admin to configure one.",
+    };
+  }
+
+  if (!verifyKioskPin(input.pin, staff.kiosk_pin_hash)) {
+    await logAttempt(input, "invalid_pin");
+    return { success: false, status: "rejected", message: "Incorrect PIN." };
+  }
+
   const { data: org } = await admin
     .from("organizations")
-    .select("face_match_max_distance, clock_attempt_cooldown_seconds")
+    .select("clock_attempt_cooldown_seconds")
     .eq("id", input.session.organizationId)
     .single();
 
-  const maxDistance = org?.face_match_max_distance ?? 0.6;
   const cooldownSec = org?.clock_attempt_cooldown_seconds ?? 30;
-
   const cooldownSince = new Date(Date.now() - cooldownSec * 1000).toISOString();
   const { data: recentAttempts } = await admin
     .from("clock_attempts")
@@ -103,106 +179,22 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
     };
   }
 
+  if (!input.photoCaptureUrl?.trim()) {
+    return enqueueReview(input, "missing_photo", staff);
+  }
+
+  const sameDayDuplicate = await hasSameDayAcceptedRecord(input.staffId, input.attemptType);
+  if (sameDayDuplicate) {
+    return enqueueReview(input, "duplicate_day", staff);
+  }
+
   const lastType = await getLastAcceptedType(input.staffId);
   if (lastType === input.attemptType) {
-    await logAttempt(input, "duplicate");
-    return {
-      success: false,
-      status: "rejected",
-      message:
-        input.attemptType === "check_in"
-          ? "Already checked in. Check out first."
-          : "Already checked out. Check in first.",
-    };
+    return enqueueReview(input, "duplicate_day", staff, { consecutive: true });
   }
 
-  const liveness = validateLivenessFrames(input.frameDescriptors);
-  if (!liveness.passed) {
-    const { data: review } = await admin
-      .from("review_queue")
-      .insert({
-        organization_id: input.session.organizationId,
-        staff_id: input.staffId,
-        kiosk_device_id: input.session.kioskId,
-        attempt_type: input.attemptType,
-        reason: "liveness_fail",
-        status: "pending",
-        liveness_clip_url: input.livenessClipUrl,
-        live_capture_url: input.liveCaptureUrl,
-        frame_metadata: input.frameMetadata || {},
-      })
-      .select("id")
-      .single();
-
-    await logAttempt(input, "liveness_fail", { reason: liveness.reason });
-    return {
-      success: false,
-      status: "review",
-      message: liveness.reason || "Liveness verification failed.",
-      reviewId: review?.id,
-    };
-  }
-
-  if (!isValidFaceDescriptor(input.liveDescriptor)) {
-    await logAttempt(input, "no_match");
-    return { success: false, status: "rejected", message: "Could not extract a valid face signature." };
-  }
-
-  const { data: embeddings } = await admin
-    .from("face_embeddings")
-    .select("embedding_values, angle_label, reference_clip_url")
-    .eq("staff_id", input.staffId)
-    .eq("is_active", true);
-
-  if (!embeddings?.length) {
-    await logAttempt(input, "no_embeddings");
-    return {
-      success: false,
-      status: "rejected",
-      message: "No registered face on file. Register your face in the staff portal first.",
-    };
-  }
-
-  const stored = embeddings.map((row) => row.embedding_values as number[]);
-  const match = matchAgainstEmbeddings(input.liveDescriptor, stored, maxDistance);
-
-  if (!match.matched) {
-    const reason = match.comparedCount === 0 ? "no_match" : "low_confidence";
-    const ref = embeddings.find((e) => e.angle_label === "front")?.reference_clip_url
-      || embeddings[0]?.reference_clip_url;
-
-    const { data: review } = await admin
-      .from("review_queue")
-      .insert({
-        organization_id: input.session.organizationId,
-        staff_id: input.staffId,
-        kiosk_device_id: input.session.kioskId,
-        attempt_type: input.attemptType,
-        reason,
-        status: "pending",
-        confidence_score: match.confidenceScore,
-        best_match_distance: match.bestDistance,
-        liveness_clip_url: input.livenessClipUrl,
-        live_capture_url: input.liveCaptureUrl,
-        stored_reference_url: ref,
-        frame_metadata: input.frameMetadata || {},
-      })
-      .select("id")
-      .single();
-
-    await logAttempt(input, reason, {
-      bestDistance: match.bestDistance,
-      confidenceScore: match.confidenceScore,
-    });
-
-    return {
-      success: false,
-      status: "review",
-      message: "Face match needs manual review.",
-      reviewId: review?.id,
-      matchDistance: match.bestDistance,
-      confidenceScore: match.confidenceScore,
-    };
+  if (!staff.avatar_url) {
+    return enqueueReview(input, "photo_review", staff);
   }
 
   const { data: record, error } = await admin
@@ -211,12 +203,9 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
       organization_id: input.session.organizationId,
       staff_id: input.staffId,
       type: input.attemptType,
-      confidence_score: match.confidenceScore,
-      best_match_distance: match.bestDistance,
       match_status: "auto_matched",
       liveness_passed: true,
-      liveness_score: liveness.motionScore,
-      liveness_clip_url: input.livenessClipUrl,
+      photo_capture_url: input.photoCaptureUrl,
       kiosk_device_id: input.session.kioskId,
     })
     .select("id, server_timestamp")
@@ -224,28 +213,21 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
 
   if (error) {
     if (error.message.includes("duplicate_")) {
-      await logAttempt(input, "duplicate", { bestDistance: match.bestDistance });
-      return { success: false, status: "rejected", message: error.message };
+      return enqueueReview(input, "duplicate_day", staff, { dbError: error.message });
     }
     throw new Error(error.message);
   }
 
-  await logAttempt(input, "success", {
-    recordId: record.id,
-    bestDistance: match.bestDistance,
-    confidenceScore: match.confidenceScore,
-  });
+  await logAttempt(input, "success", { recordId: record.id });
 
   return {
     success: true,
     status: "clocked",
     message:
       input.attemptType === "check_in"
-        ? `Checked in successfully.`
-        : `Checked out successfully.`,
+        ? "Checked in successfully."
+        : "Checked out successfully.",
     recordId: record.id,
-    matchDistance: match.bestDistance,
-    confidenceScore: match.confidenceScore,
   };
 }
 
@@ -293,12 +275,9 @@ export async function resolveReviewQueueItem(
       organization_id: review.organization_id,
       staff_id: review.staff_id,
       type: review.attempt_type,
-      confidence_score: review.confidence_score,
-      best_match_distance: review.best_match_distance,
       match_status: "manual_override",
-      liveness_passed: review.reason !== "liveness_fail",
-      liveness_score: null,
-      liveness_clip_url: review.liveness_clip_url,
+      liveness_passed: true,
+      photo_capture_url: review.live_capture_url,
       kiosk_device_id: review.kiosk_device_id,
       reviewed_by: adminProfileId,
       review_queue_id: review.id,

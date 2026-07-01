@@ -52,13 +52,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DEPARTMENTS } from "@/constants";
 import { deactivateStaff, toggleStaffStatus } from "@/lib/actions/staff";
-import { formatDate } from "@/lib/utils/formatDate";
+import { formatDate, getInitials } from "@/lib/utils/formatDate";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { Profile } from "@/lib/types";
 
 const PAGE_SIZE = 10;
 
 interface StaffTableProps {
-  staff: Profile[];
+  staff: (Profile & { avatarDisplayUrl?: string })[];
 }
 
 export function StaffTable({ staff }: StaffTableProps) {
@@ -175,6 +176,7 @@ export function StaffTable({ staff }: StaffTableProps) {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[50px]" />
               <TableHead>Name</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Department</TableHead>
@@ -187,13 +189,19 @@ export function StaffTable({ staff }: StaffTableProps) {
           <TableBody>
             {paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                   No staff members found.
                 </TableCell>
               </TableRow>
             ) : (
               paginated.map((member) => (
                 <TableRow key={member.id}>
+                  <TableCell>
+                    <Avatar className="h-9 w-9">
+                      <AvatarImage src={member.avatarDisplayUrl || member.avatar_url} alt={member.full_name} />
+                      <AvatarFallback>{getInitials(member.full_name)}</AvatarFallback>
+                    </Avatar>
+                  </TableCell>
                   <TableCell className="font-medium">{member.full_name}</TableCell>
                   <TableCell>{member.email}</TableCell>
                   <TableCell>{member.department}</TableCell>

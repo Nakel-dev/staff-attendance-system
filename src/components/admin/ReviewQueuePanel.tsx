@@ -11,13 +11,21 @@ interface ReviewItem {
   staff_id: string;
   attempt_type: string;
   reason: string;
-  confidence_score: number | null;
-  best_match_distance: number | null;
-  liveness_clip_url: string | null;
-  stored_reference_url: string | null;
+  live_capture_url: string | null;
+  liveCaptureSignedUrl?: string;
+  storedReferenceSignedUrl?: string;
   created_at: string;
   profiles?: { full_name?: string; employee_code?: string; department?: string };
 }
+
+const REASON_LABELS: Record<string, string> = {
+  missing_photo: "Missing photo",
+  duplicate_day: "Duplicate same day",
+  photo_review: "No profile photo on file",
+  low_confidence: "Low confidence",
+  no_match: "No match",
+  liveness_fail: "Liveness failed",
+};
 
 export function ReviewQueuePanel() {
   const [items, setItems] = useState<ReviewItem[]>([]);
@@ -76,13 +84,43 @@ export function ReviewQueuePanel() {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm">
-              Reason: <span className="font-medium">{item.reason.replace("_", " ")}</span>
+              Reason:{" "}
+              <span className="font-medium">
+                {REASON_LABELS[item.reason] || item.reason.replace("_", " ")}
+              </span>
             </p>
             <p className="text-muted-foreground text-sm">
               {item.profiles?.employee_code || "—"} · {item.profiles?.department || "—"}
             </p>
-            {item.best_match_distance != null && (
-              <p className="text-sm">Match distance: {item.best_match_distance.toFixed(3)}</p>
+            {(item.liveCaptureSignedUrl || item.storedReferenceSignedUrl) && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Kiosk capture</p>
+                  {item.liveCaptureSignedUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.liveCaptureSignedUrl}
+                      alt="Kiosk capture"
+                      className="aspect-[4/3] w-full rounded-md border object-cover"
+                    />
+                  ) : (
+                    <p className="text-muted-foreground text-sm">No photo captured</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Profile photo on file</p>
+                  {item.storedReferenceSignedUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.storedReferenceSignedUrl}
+                      alt="Profile reference"
+                      className="aspect-[4/3] w-full rounded-md border object-cover"
+                    />
+                  ) : (
+                    <p className="text-muted-foreground text-sm">No profile photo uploaded</p>
+                  )}
+                </div>
+              </div>
             )}
             <div className="flex gap-2">
               <Button

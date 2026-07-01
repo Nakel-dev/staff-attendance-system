@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { StaffTable } from "@/components/staff/StaffTable";
 import { StaffForm } from "@/components/staff/StaffForm";
+import { enrichProfilesWithPhotoUrls } from "@/lib/storage/photos";
 
 export default async function StaffPage() {
   const supabase = await createClient();
@@ -8,6 +9,8 @@ export default async function StaffPage() {
     .from("profiles")
     .select("*")
     .order("full_name");
+
+  const staffWithPhotos = await enrichProfilesWithPhotoUrls(staff || []);
 
   return (
     <div className="space-y-6">
@@ -18,7 +21,7 @@ export default async function StaffPage() {
         </div>
         <StaffForm />
       </div>
-      <StaffTable staff={staff || []} />
+      <StaffTable staff={staffWithPhotos} />
     </div>
   );
 }

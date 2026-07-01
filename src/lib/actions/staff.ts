@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { hashKioskPin, isValidKioskPin } from "@/lib/kiosk/pin";
 import type { Role } from "@/lib/types";
 
 function generatePassword(length = 12) {
@@ -56,10 +57,16 @@ export async function createStaffMember(data: {
   department: string;
   role: Role;
   date_joined: string;
+  employee_code?: string;
+  kiosk_pin?: string;
 }) {
   try {
     const auth = await requireOrgAdmin();
     if ("error" in auth) return { error: auth.error };
+
+    if (data.kiosk_pin && !isValidKioskPin(data.kiosk_pin)) {
+      return { error: "Kiosk PIN must be exactly 4 digits" };
+    }
 
     const password = generatePassword();
     const adminClient = createAdminClient();
@@ -81,6 +88,8 @@ export async function createStaffMember(data: {
       department: data.department,
       role: data.role,
       date_joined: data.date_joined,
+      employee_code: data.employee_code?.trim() || null,
+      kiosk_pin_hash: data.kiosk_pin ? hashKioskPin(data.kiosk_pin) : null,
       is_active: true,
     });
 
@@ -105,6 +114,8 @@ export async function updateStaffMember(
     department: string;
     role: Role;
     date_joined: string;
+    employee_code?: string;
+    kiosk_pin?: string;
   }
 ) {
   try {
@@ -114,18 +125,26 @@ export async function updateStaffMember(
     const scope = await assertStaffInOrg(id, auth.adminProfile.organization_id);
     if ("error" in scope) return { error: scope.error };
 
-    const { error } = await scope.admin
-      .from("profiles")
-      .update({
-        full_name: data.full_name.trim(),
-        email: data.email.trim().toLowerCase(),
-        phone: data.phone || null,
-        department: data.department,
-        role: data.role,
-        date_joined: data.date_joined,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id);
+    if (data.kiosk_pin && !isValidKioskPin(data.kiosk_pin)) {
+      return { error: "Kiosk PIN must be exactly 4 digits" };
+    }
+
+    const updatePayload: Record<string, unknown> = {
+      full_name: data.full_name.trim(),
+      email: data.email.trim().toLowerCase(),
+      phone: data.phone || null,
+      department: data.department,
+      role: data.role,
+      date_joined: data.date_joined,
+      employee_code: data.employee_code?.trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (data.kiosk_pin) {
+      updatePayload.kiosk_pin_hash = hashKioskPin(data.kiosk_pin);
+    }
+
+    const { error } = await scope.admin.from("profiles").update(updatePayload).eq("id", id);
 
     if (error) return { error: error.message };
 

@@ -7,10 +7,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  FaceRegistrationCapture,
-  type FaceRegistrationCaptureResult,
-} from "@/components/face/FaceRegistrationCapture";
+import { KioskPinEntry } from "@/components/kiosk/KioskPinEntry";
+import { KioskPhotoCapture } from "@/components/kiosk/KioskPhotoCapture";
 import { flushQueuedClocks, enqueueClock } from "@/lib/kiosk/offline-queue";
 import type { Profile } from "@/lib/types";
 
@@ -19,14 +17,13 @@ interface KioskClockAppProps {
   deviceName: string;
 }
 
-type Step = "pick" | "capture" | "done";
+type Step = "pick" | "pin" | "photo" | "done";
 
 async function submitClock(payload: {
   staffId: string;
   attemptType: "check_in" | "check_out";
-  frameDescriptors: number[][];
-  liveDescriptor: number[];
-  livenessClipUrl?: string;
+  pin: string;
+  photoCaptureUrl?: string;
 }) {
   const res = await fetch("/api/kiosk/clock", {
     method: "POST",
@@ -36,9 +33,20 @@ async function submitClock(payload: {
   return res.json();
 }
 
+async function uploadPhoto(staffId: string, blob: Blob): Promise<string | undefined> {
+  const form = new FormData();
+  form.append("file", blob, "capture.jpg");
+  form.append("staffId", staffId);
+  const res = await fetch("/api/kiosk/upload-photo", { method: "POST", body: form });
+  if (!res.ok) return undefined;
+  const data = (await res.json()) as { path?: string };
+  return data.path;
+}
+
 export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<(typeof staff)[0] | null>(null);
+  const [pin, setPin] = useState("");
   const [attemptType, setAttemptType] = useState<"check_in" | "check_out">("check_in");
   const [step, setStep] = useState<Step>("pick");
   const [online, setOnline] = useState(true);
@@ -73,9 +81,8 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
       const response = await submitClock({
         staffId: item.staffId,
         attemptType: item.attemptType,
-        frameDescriptors: item.frameDescriptors,
-        liveDescriptor: item.liveDescriptor,
-        livenessClipUrl: item.livenessClipUrl,
+        pin: item.pin,
+        photoCaptureUrl: item.photoCaptureUrl,
       });
       return { success: !!response.success };
     });
@@ -89,6 +96,7 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
 
   const handleSelectStaff = async (member: (typeof staff)[0]) => {
     setSelected(member);
+    setPin("");
     const res = await fetch(`/api/kiosk/staff-status?staffId=${member.id}`);
     if (res.ok) {
       const data = (await res.json()) as { nextAttempt?: "check_in" | "check_out" };
@@ -96,39 +104,33 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
     } else {
       setAttemptType("check_in");
     }
-    setStep("capture");
+    setStep("pin");
   };
 
-  const handleCaptureComplete = async (capture: FaceRegistrationCaptureResult) => {
-    if (!selected) return;
-    setProcessing(true);
-    const front =
-      capture.angles.find((a) => a.angle === "front")?.descriptor ||
-      capture.angles[capture.angles.length - 1]?.descriptor;
-    if (!front) {
-      toast.error("Could not capture a valid face signature");
-      setProcessing(false);
-      return;
-    }
+  const handlePinSubmit = (enteredPin: string) => {
+    setPin(enteredPin);
+    setStep("photo");
+  };
 
-    let livenessClipUrl: string | undefined;
-    if (capture.referenceClipBlob) {
-      const form = new FormData();
-      form.append("file", capture.referenceClipBlob, "liveness.webm");
-      const uploadRes = await fetch("/api/kiosk/upload-clip", { method: "POST", body: form });
-      if (uploadRes.ok) {
-        const uploadData = (await uploadRes.json()) as { path?: string };
-        livenessClipUrl = uploadData.path;
+  const handlePhotoCapture = async (blob: Blob) => {
+    if (!selected || !pin) return;
+    setProcessing(true);
+
+    let photoCaptureUrl: string | undefined;
+    if (navigator.onLine) {
+      photoCaptureUrl = await uploadPhoto(selected.id, blob);
+      if (!photoCaptureUrl) {
+        toast.error("Could not upload photo");
+        setProcessing(false);
+        return;
       }
     }
 
     const payload = {
       staffId: selected.id,
       attemptType,
-      frameDescriptors: capture.frameDescriptors,
-      liveDescriptor: front,
-      livenessClipUrl,
-      frameMetadata: { motionScore: capture.motionScore, angles: capture.angles.map((a) => a.angle) },
+      pin,
+      photoCaptureUrl,
     };
 
     if (!navigator.onLine) {
@@ -144,11 +146,13 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
     setStep("done");
     setProcessing(false);
     if (response.success) toast.success(response.message);
-    else toast.message(response.message || "Needs review");
+    else if (response.status === "review") toast.message(response.message || "Sent for admin review");
+    else toast.error(response.message || "Could not clock");
   };
 
   const reset = () => {
     setSelected(null);
+    setPin("");
     setStep("pick");
     setResultMessage("");
     setQuery("");
@@ -203,7 +207,7 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
         </Card>
       )}
 
-      {step === "capture" && selected && (
+      {step === "pin" && selected && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -216,14 +220,37 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            <KioskPinEntry
+              staffName={selected.full_name}
+              onSubmit={handlePinSubmit}
+              onCancel={reset}
+              disabled={processing}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {step === "photo" && selected && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              {attemptType === "check_in" ? (
+                <LogIn className="h-5 w-5" />
+              ) : (
+                <LogOut className="h-5 w-5" />
+              )}
+              Photo — {selected.full_name}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
             {processing ? (
               <div className="flex justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin" />
               </div>
             ) : (
-              <FaceRegistrationCapture onComplete={(r) => void handleCaptureComplete(r)} />
+              <KioskPhotoCapture onCapture={(blob) => void handlePhotoCapture(blob)} />
             )}
-            <Button variant="outline" className="mt-4 w-full" onClick={reset}>
+            <Button variant="outline" className="mt-4 w-full" onClick={reset} disabled={processing}>
               Cancel
             </Button>
           </CardContent>

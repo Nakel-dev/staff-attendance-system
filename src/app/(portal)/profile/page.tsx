@@ -1,21 +1,18 @@
 import { createClient } from "@/lib/supabase/server";
-import { getAuthenticatedProfile } from "@/lib/supabase/profile";
 import { AUTH_PATH } from "@/constants";
 import { format } from "date-fns";
 import { redirect } from "next/navigation";
 import { StaffCard } from "@/components/staff/StaffCard";
 import { StaffForm } from "@/components/staff/StaffForm";
 import { StaffProfileView } from "@/components/staff/StaffProfileView";
-import { FaceEnrollmentCard } from "@/components/profile/FaceEnrollmentCard";
+import { ProfilePhotoCard } from "@/components/profile/ProfilePhotoCard";
 import { MfaSettingsCard } from "@/components/profile/MfaSettingsCard";
+import { getAuthenticatedProfile } from "@/lib/supabase/profile";
+import { getSignedProfilePhotoUrl } from "@/lib/storage/photos";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProfilePage({
-  searchParams,
-}: {
-  searchParams: { enroll?: string };
-}) {
+export default async function ProfilePage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -24,6 +21,8 @@ export default async function ProfilePage({
 
   const profile = await getAuthenticatedProfile(user.id);
   if (!profile) redirect(`${AUTH_PATH}?error=profile-not-found`);
+
+  const avatarDisplayUrl = await getSignedProfilePhotoUrl(profile.avatar_url);
 
   const now = new Date();
   const month = now.getMonth() + 1;
@@ -62,14 +61,14 @@ export default async function ProfilePage({
       <div>
         <h2 className="text-2xl font-bold tracking-tight">My Profile</h2>
         <p className="text-muted-foreground">
-          Register your face for the reception kiosk and manage your account
+          Upload your profile photo for the reception kiosk and manage your account
         </p>
       </div>
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <StaffCard profile={profile} />
+        <StaffCard profile={profile} avatarDisplayUrl={avatarDisplayUrl} />
         {isAdmin && <StaffForm profile={profile} />}
       </div>
-      <FaceEnrollmentCard promptEnrollment={searchParams.enroll === "1"} />
+      <ProfilePhotoCard profile={profile} avatarDisplayUrl={avatarDisplayUrl} />
       <MfaSettingsCard />
       <StaffProfileView
         staffId={profile.id}

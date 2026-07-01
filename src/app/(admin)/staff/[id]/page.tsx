@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { StaffCard } from "@/components/staff/StaffCard";
 import { StaffForm } from "@/components/staff/StaffForm";
 import { StaffProfileView } from "@/components/staff/StaffProfileView";
+import { ProfilePhotoCard } from "@/components/profile/ProfilePhotoCard";
+import { getSignedProfilePhotoUrl } from "@/lib/storage/photos";
 
 export default async function StaffProfilePage({
   params,
@@ -17,6 +19,8 @@ export default async function StaffProfilePage({
     .single();
 
   if (!profile) notFound();
+
+  const avatarDisplayUrl = await getSignedProfilePhotoUrl(profile.avatar_url);
 
   const now = new Date();
   const month = now.getMonth() + 1;
@@ -56,9 +60,16 @@ export default async function StaffProfilePage({
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <StaffCard profile={profile} />
+        <StaffCard profile={profile} avatarDisplayUrl={avatarDisplayUrl} />
         {isAdmin && <StaffForm profile={profile} />}
       </div>
+      {isAdmin && (
+        <ProfilePhotoCard
+          profile={profile}
+          avatarDisplayUrl={avatarDisplayUrl}
+          staffProfileId={profile.id}
+        />
+      )}
       <StaffProfileView
         staffId={params.id}
         initialMonth={month}

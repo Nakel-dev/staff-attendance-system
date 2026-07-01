@@ -3,6 +3,7 @@ import { getProfileWithOrganization, getOrganizationDisplayName, getAuthenticate
 import { AppShell } from "@/components/layout/AppShell";
 import { redirect } from "next/navigation";
 import { AUTH_PATH } from "@/constants";
+import { getSignedProfilePhotoUrl } from "@/lib/storage/photos";
 
 const ADMIN_PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -47,9 +48,12 @@ export default async function AdminLayout({
     .order("created_at", { ascending: false })
     .limit(20);
 
+  const avatarDisplayUrl = await getSignedProfilePhotoUrl(profile.avatar_url);
+  const profileForShell = { ...profile, avatar_url: avatarDisplayUrl || profile.avatar_url };
+
   return (
     <AppShell
-      profile={profile}
+      profile={profileForShell}
       organizationName={organizationName}
       notifications={notifications || []}
       pendingLeaves={pendingLeaves || 0}

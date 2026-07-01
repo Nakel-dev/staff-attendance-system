@@ -8,14 +8,16 @@ import type { Profile } from "@/lib/types";
 
 interface StaffCardProps {
   profile: Profile;
+  avatarDisplayUrl?: string;
 }
 
-export function StaffCard({ profile }: StaffCardProps) {
+export function StaffCard({ profile, avatarDisplayUrl }: StaffCardProps) {
+  const photoSrc = avatarDisplayUrl || profile.avatar_url;
   return (
     <Card>
       <CardHeader className="flex flex-row items-center gap-4 space-y-0 pb-4">
         <Avatar className="h-16 w-16">
-          <AvatarImage src={profile.avatar_url} alt={profile.full_name} />
+          <AvatarImage src={photoSrc} alt={profile.full_name} />
           <AvatarFallback className="text-lg">{getInitials(profile.full_name)}</AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">

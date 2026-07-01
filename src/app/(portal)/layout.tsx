@@ -6,6 +6,7 @@ import {
 } from "@/lib/supabase/profile";
 import { AppShell } from "@/components/layout/AppShell";
 import { AUTH_PATH } from "@/constants";
+import { getSignedProfilePhotoUrl } from "@/lib/storage/photos";
 import { redirect } from "next/navigation";
 
 export default async function PortalLayout({
@@ -38,9 +39,12 @@ export default async function PortalLayout({
     .order("created_at", { ascending: false })
     .limit(20);
 
+  const avatarDisplayUrl = await getSignedProfilePhotoUrl(profile.avatar_url);
+  const profileForShell = { ...profile, avatar_url: avatarDisplayUrl || profile.avatar_url };
+
   return (
     <AppShell
-      profile={profile}
+      profile={profileForShell}
       organizationName={organizationName}
       notifications={notifications || []}
       pendingLeaves={pendingLeaves || 0}

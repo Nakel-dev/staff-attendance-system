@@ -1,7 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
-import { Monitor, ScanFace } from "lucide-react";
+import { Camera, Monitor } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Attendance } from "@/lib/types";
 
@@ -20,8 +20,8 @@ export function StaffAttendanceStatus({ todayRecord }: StaffAttendanceStatusProp
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-muted-foreground text-sm">
-          Clock in and out at the reception kiosk only. Your phone portal is for viewing records and
-          registering your face.
+          Clock in and out at the reception kiosk using your name, PIN, and a quick photo. Your
+          portal is for viewing records and uploading your profile photo.
         </p>
         <div className="rounded-lg border p-4 space-y-2">
           <div className="flex justify-between text-sm">
@@ -42,11 +42,11 @@ export function StaffAttendanceStatus({ todayRecord }: StaffAttendanceStatusProp
           </div>
         </div>
         <a
-          href="/profile?enroll=1"
+          href="/profile"
           className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
-          <ScanFace className="h-4 w-4" />
-          Register face for kiosk
+          <Camera className="h-4 w-4" />
+          Upload profile photo
         </a>
       </CardContent>
     </Card>
