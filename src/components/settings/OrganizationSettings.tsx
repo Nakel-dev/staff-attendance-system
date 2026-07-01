@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AttendanceSecuritySettings } from "@/components/settings/AttendanceSecuritySettings";
+import { KioskManagement } from "@/components/settings/KioskManagement";
 import { LEAVE_BALANCE } from "@/constants";
 
 interface OrganizationSettingsProps {
@@ -27,9 +28,17 @@ interface OrganizationSettingsProps {
     require_geofence?: boolean | null;
     require_qr_code?: boolean | null;
   };
+  kiosks?: {
+    id: string;
+    device_name: string;
+    location: string | null;
+    is_active: boolean;
+    last_seen_at: string | null;
+    created_at: string;
+  }[];
 }
 
-export function OrganizationSettings({ organization }: OrganizationSettingsProps) {
+export function OrganizationSettings({ organization, kiosks = [] }: OrganizationSettingsProps) {
   const [name, setName] = useState(organization.name);
   const [inviteCode, setInviteCode] = useState(organization.invite_code);
   const [savingName, setSavingName] = useState(false);
@@ -133,6 +142,8 @@ export function OrganizationSettings({ organization }: OrganizationSettingsProps
             require_qr_code: organization.require_qr_code,
           }}
         />
+
+        <KioskManagement initialKiosks={kiosks} />
 
         <Card className="lg:col-span-2">
           <CardHeader>

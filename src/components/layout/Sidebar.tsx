@@ -11,6 +11,7 @@ import {
   LogOut,
   User,
   Building2,
+  ScanFace,
   Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -38,6 +39,7 @@ const adminLinks: NavLink[] = [
   { href: "/staff", label: "Staff Management", icon: Users },
   { href: "/attendance", label: "Mark Attendance", icon: ClipboardCheck },
   { href: "/leaves", label: "Leave Requests", icon: CalendarDays, badge: true },
+  { href: "/review-queue", label: "Review Queue", icon: ScanFace },
   { href: "/my-leaves", label: "My Leaves", icon: CalendarDays },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },

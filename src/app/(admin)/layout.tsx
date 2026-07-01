@@ -11,6 +11,7 @@ const ADMIN_PAGE_TITLES: Record<string, string> = {
   "/leaves": "Leave Requests",
   "/reports": "Reports",
   "/settings": "Settings",
+  "/review-queue": "Review Queue",
 };
 
 export default async function AdminLayout({

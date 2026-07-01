@@ -1,5 +1,5 @@
 export type AttendanceMode = "trust" | "standard" | "strict" | "admin_only";
-export type CheckInMethod = "self" | "admin" | "qr";
+export type CheckInMethod = "self" | "admin" | "qr" | "kiosk";
 export type Role = "admin" | "staff";
 export type AttendanceStatus = "present" | "absent" | "late" | "half-day";
 export type LeaveStatus = "pending" | "approved" | "rejected";
@@ -38,6 +38,7 @@ export interface Profile {
   email: string;
   phone?: string;
   department: string;
+  employee_code?: string | null;
   role: Role;
   avatar_url?: string;
   face_enrolled_at?: string | null;
@@ -113,4 +114,18 @@ export interface DashboardStats {
   lateToday: number;
   pendingLeaves: number;
   attendanceRate: number;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  staff_id: string;
+  type: "check_in" | "check_out";
+  server_timestamp: string;
+  confidence_score?: number | null;
+  best_match_distance?: number | null;
+  match_status: "auto_matched" | "manual_override" | "rejected";
+  liveness_passed: boolean;
+  liveness_score?: number | null;
+  kiosk_device_id: string;
+  created_at: string;
 }

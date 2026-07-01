@@ -113,6 +113,21 @@ export async function clearFaceEnrollment() {
     } = await supabase.auth.getUser();
     if (!user) return { error: "Unauthorized" };
 
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!profile) return { error: "Profile not found" };
+
+    const admin = createAdminClient();
+    await admin
+      .from("face_embeddings")
+      .update({ is_active: false })
+      .eq("staff_id", profile.id)
+      .eq("is_active", true);
+
     const { error } = await supabase
       .from("profiles")
       .update({

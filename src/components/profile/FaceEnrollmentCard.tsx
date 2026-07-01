@@ -2,28 +2,27 @@
 
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
-import Link from "next/link";
 import { CheckCircle2, Loader2, ScanFace, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { clearFaceEnrollment, enrollFace, getFaceEnrollmentStatus } from "@/lib/actions/face";
+import { clearFaceEnrollment, getFaceEnrollmentStatus } from "@/lib/actions/face";
 import { createClient } from "@/lib/supabase/client";
 import {
-  VideoVerificationCapture,
-  type VideoVerificationResult,
-} from "@/components/attendance/VideoVerificationCapture";
+  FaceRegistrationCapture,
+  type FaceRegistrationCaptureResult,
+} from "@/components/face/FaceRegistrationCapture";
 
 export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollment?: boolean }) {
   const [enrolled, setEnrolled] = useState(false);
   const [enrolledAt, setEnrolledAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [verification, setVerification] = useState<VideoVerificationResult | null>(null);
+  const [showCapture, setShowCapture] = useState(false);
 
   useEffect(() => {
-    (async () => {
+    void (async () => {
       const status = await getFaceEnrollmentStatus();
       setLoading(false);
       if ("error" in status) return;
@@ -32,11 +31,7 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
     })();
   }, []);
 
-  const handleEnroll = async () => {
-    if (!verification) {
-      toast.error("Complete the video verification first");
-      return;
-    }
+  const handleComplete = async (capture: FaceRegistrationCaptureResult) => {
     setProcessing(true);
     try {
       const supabase = createClient();
@@ -45,28 +40,41 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not signed in");
 
-      const videoPath = `${user.id}/face-enrollment-${Date.now()}.webm`;
-      const { error: uploadError } = await supabase.storage
-        .from("check-in-videos")
-        .upload(videoPath, verification.videoBlob, {
-          contentType: verification.videoBlob.type || "video/webm",
-          upsert: true,
-        });
-      if (uploadError) throw new Error(uploadError.message);
+      let referenceClipUrl: string | undefined;
+      if (capture.referenceClipBlob) {
+        const path = `${user.id}/registration-${Date.now()}.webm`;
+        const { error: uploadError } = await supabase.storage
+          .from("face-reference-clips")
+          .upload(path, capture.referenceClipBlob, {
+            contentType: capture.referenceClipBlob.type || "video/webm",
+            upsert: true,
+          });
+        if (uploadError) throw new Error(uploadError.message);
+        referenceClipUrl = path;
+      }
 
-      const result = await enrollFace({
-        descriptor: verification.faceDescriptor,
-        referenceVideoPath: videoPath,
-        motionScore: verification.motionScore,
-        frameDescriptors: verification.frameDescriptors,
+      const res = await fetch("/api/staff/register-face", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          embeddings: capture.angles.map((angle) => ({
+            angle: angle.angle,
+            descriptor: angle.descriptor,
+            referenceClipUrl: referenceClipUrl,
+          })),
+          referenceClipUrl,
+          motionScore: capture.motionScore,
+        }),
       });
-      if ("error" in result) throw new Error(result.error);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Registration failed");
 
       setEnrolled(true);
       setEnrolledAt(new Date().toISOString());
-      toast.success("Face enrolled with video liveness verification");
+      setShowCapture(false);
+      toast.success("Face registered for kiosk check-in");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Face enrollment failed");
+      toast.error(err instanceof Error ? err.message : "Face registration failed");
     } finally {
       setProcessing(false);
     }
@@ -82,8 +90,8 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
     }
     setEnrolled(false);
     setEnrolledAt(null);
-    setVerification(null);
-    toast.success("Face enrollment removed");
+    setShowCapture(false);
+    toast.success("Face registration removed");
   };
 
   if (loading) {
@@ -101,64 +109,63 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ScanFace className="h-5 w-5" />
-          Video Face Enrollment
+          Face registration
         </CardTitle>
         <CardDescription>
-          {promptEnrollment && !enrolled
-            ? "Welcome — complete this step first so video check-in can verify your identity."
-            : "Record a short live video so check-in can verify it is really you."}
+          Register five head angles for the reception kiosk. Clock in/out happens at the kiosk only — not from
+          this portal.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {enrolled ? (
           <Alert>
             <CheckCircle2 className="h-4 w-4" />
-            <AlertTitle>Face enrolled</AlertTitle>
+            <AlertTitle>Face registered</AlertTitle>
             <AlertDescription>
               {enrolledAt
                 ? `Registered on ${format(new Date(enrolledAt), "MMM d, yyyy 'at' h:mm a")}`
-                : "Your face is registered for secure check-in."}
+                : "Your face is ready for kiosk matching."}
             </AlertDescription>
           </Alert>
         ) : (
           <Alert>
-            <AlertTitle>Enrollment required for secure check-in</AlertTitle>
+            <AlertTitle>Registration required</AlertTitle>
             <AlertDescription>
-              Standard and Strict modes require live video verification. Enroll here before{" "}
-              <Link href="/my-attendance" className="text-primary underline">
-                checking in
-              </Link>
-              .
+              Complete the guided capture below before using the reception kiosk.
             </AlertDescription>
           </Alert>
         )}
 
-        {!enrolled && (
-          <>
-            <VideoVerificationCapture
-              label="Enrollment video"
-              disabled={processing}
-              onVerified={setVerification}
-            />
-            {verification?.previewUrl && (
-              <video
-                src={verification.previewUrl}
-                controls
-                className="h-32 w-full max-w-sm rounded-lg border"
-              />
-            )}
-            <Button onClick={handleEnroll} disabled={processing || !verification}>
-              {processing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save enrollment
-            </Button>
-          </>
+        {!enrolled && !showCapture && (
+          <Button onClick={() => setShowCapture(true)} disabled={processing}>
+            Start face registration
+          </Button>
+        )}
+
+        {!enrolled && showCapture && (
+          <FaceRegistrationCapture
+            disabled={processing}
+            onComplete={(result) => void handleComplete(result)}
+          />
         )}
 
         {enrolled && (
-          <Button variant="outline" size="sm" onClick={handleClear} disabled={processing}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            Remove face enrollment
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowCapture(true)} disabled={processing}>
+              Re-register face
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => void handleClear()} disabled={processing}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Remove registration
+            </Button>
+          </div>
+        )}
+
+        {enrolled && showCapture && (
+          <FaceRegistrationCapture
+            disabled={processing}
+            onComplete={(result) => void handleComplete(result)}
+          />
         )}
       </CardContent>
     </Card>

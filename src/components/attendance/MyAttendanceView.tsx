@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { AttendanceCalendar } from "@/components/attendance/AttendanceCalendar";
 import { AttendanceTable } from "@/components/attendance/AttendanceTable";
 import { AttendanceMarker } from "@/components/attendance/AttendanceMarker";
+import { LiveAttendanceStatus } from "@/components/attendance/LiveAttendanceStatus";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -79,6 +80,7 @@ export function MyAttendanceView({
   return (
     <div className="space-y-6">
       <AttendanceMarker mode="staff" todayRecord={todayRecord} />
+      <LiveAttendanceStatus staffId={staffId} />
 
       <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
         <Card>

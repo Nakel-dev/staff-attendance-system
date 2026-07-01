@@ -10,11 +10,13 @@ const ADMIN_ROUTES = [
   "/leaves",
   "/reports",
   "/settings",
+  "/review-queue",
 ];
 
 const STAFF_ROUTES = ["/my-attendance"];
 const SHARED_ROUTES = ["/profile", "/my-leaves"];
-const PUBLIC_ROUTES = ["/", AUTH_PATH, "/login", "/register", "/terms", "/privacy"];
+const PUBLIC_ROUTES = ["/", AUTH_PATH, "/login", "/register", "/terms", "/privacy", "/kiosk"];
+const KIOSK_API_PREFIX = "/api/kiosk";
 const AUTH_SUBROUTES = ["/auth/reset-password", "/auth/callback"];
 const RATE_LIMITED_PREFIXES = [AUTH_PATH, "/auth/reset-password"];
 
@@ -30,6 +32,10 @@ export async function updateSession(request: NextRequest) {
   supabaseResponse.headers.set("x-request-id", requestId);
 
   const pathname = request.nextUrl.pathname;
+  if (pathname.startsWith(KIOSK_API_PREFIX) || pathname.startsWith("/kiosk")) {
+    return supabaseResponse;
+  }
+
   if (RATE_LIMITED_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     const ip = getClientIp(request);
     const limit = rateLimit(`auth:${ip}`, 20, 60_000);

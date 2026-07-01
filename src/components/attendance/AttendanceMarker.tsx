@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/table";
 import { ATTENDANCE_STATUS_LABELS } from "@/constants";
 import { saveAttendanceBatch } from "@/lib/actions/attendance";
-import { StaffCheckInPanel } from "@/components/attendance/StaffCheckInPanel";
+import { StaffAttendanceStatus } from "@/components/attendance/StaffAttendanceStatus";
 import type { Attendance, AttendanceStatus, Profile } from "@/lib/types";
 
 interface AttendanceMarkerProps {
@@ -117,7 +117,7 @@ export function AttendanceMarker({
   };
 
   if (mode === "staff") {
-    return <StaffCheckInPanel todayRecord={todayRecord} />;
+    return <StaffAttendanceStatus todayRecord={todayRecord ?? null} />;
   }
 
   return (

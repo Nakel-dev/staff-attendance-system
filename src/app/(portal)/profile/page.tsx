@@ -53,7 +53,7 @@ export default async function ProfilePage({
       <div>
         <h2 className="text-2xl font-bold tracking-tight">My Profile</h2>
         <p className="text-muted-foreground">
-          Enroll your face for video check-in and manage your account
+          Register your face for the reception kiosk and manage your account
         </p>
       </div>
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
