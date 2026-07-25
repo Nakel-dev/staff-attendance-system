@@ -17,6 +17,9 @@
 
 # production
 /build
+/dist
+/softcopy
+/AttendPro-Softcopy.zip
 
 # misc
 .DS_Store

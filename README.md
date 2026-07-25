@@ -82,6 +82,9 @@ Staff invite code: **DEMO2026**
 | `npm run migrate:secure` | Apply secure check-in migrations 005–007 |
 | `npm run desktop:dev` | Run as desktop app (dev) |
 | `npm run desktop:build` | Build Windows EXE installer |
+| `npm run desktop:softcopy` | Zip installer + guide for lecturer softcopy |
+
+Desktop softcopy guide: [DESKTOP_SUBMISSION.md](./DESKTOP_SUBMISSION.md)
 
 ## Project structure
 

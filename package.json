@@ -19,7 +19,8 @@
     "test:prelaunch": "playwright test tests/prelaunch.spec.ts",
     "desktop:prepare": "npm run build && node scripts/prepare-standalone.js",
     "desktop:dev": "npm run desktop:prepare && electron desktop/main.cjs",
-    "desktop:build": "npm run desktop:prepare && electron-builder --config electron-builder.json"
+    "desktop:build": "npm run desktop:prepare && electron-builder --config electron-builder.json",
+    "desktop:softcopy": "powershell -ExecutionPolicy Bypass -File scripts/package-softcopy.ps1"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.16",
