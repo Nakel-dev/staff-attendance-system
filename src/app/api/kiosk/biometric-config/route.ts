@@ -3,7 +3,10 @@ import { getKioskSessionFromCookies } from "@/lib/kiosk/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isDiditConfigured } from "@/lib/didit/client";
 import { isAwsRekognitionConfigured } from "@/lib/aws/rekognition";
-import { normalizeBiometricProvider } from "@/lib/biometrics/providers";
+import {
+  isBiometricProviderReady,
+  normalizeBiometricProvider,
+} from "@/lib/biometrics/providers";
 
 /** Kiosk: biometric mode for this organization. */
 export async function GET() {
@@ -22,14 +25,14 @@ export async function GET() {
   const provider = normalizeBiometricProvider(org?.biometric_provider);
   const diditOk = isDiditConfigured();
   const awsOk = isAwsRekognitionConfigured();
-
-  let effective = provider;
-  if (provider === "didit" && !diditOk) effective = "local";
-  if (provider === "aws" && !awsOk) effective = "local";
+  const ready = isBiometricProviderReady(provider, {
+    awsConfigured: awsOk,
+    diditConfigured: diditOk,
+  });
 
   return NextResponse.json({
-    provider: effective,
-    configuredProvider: provider,
+    provider,
+    ready,
     diditConfigured: diditOk,
     awsConfigured: awsOk,
   });

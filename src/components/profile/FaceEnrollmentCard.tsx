@@ -18,7 +18,9 @@ import type { BiometricProvider } from "@/lib/biometrics/providers";
 type VerifyPhase = "idle" | "waiting" | "done";
 
 export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollment?: boolean }) {
-  const [provider, setProvider] = useState<BiometricProvider>("local");
+  const [provider, setProvider] = useState<BiometricProvider>("aws");
+  const [providerReady, setProviderReady] = useState(true);
+  const [setupHint, setSetupHint] = useState<string | null>(null);
   const [enrolled, setEnrolled] = useState(false);
   const [enrolledAt, setEnrolledAt] = useState<string | null>(null);
   const [hasPhoto, setHasPhoto] = useState(false);
@@ -39,6 +41,8 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
     if (configRes.provider === "didit" || configRes.provider === "aws" || configRes.provider === "local") {
       setProvider(configRes.provider);
     }
+    setProviderReady(configRes.ready !== false);
+    setSetupHint(typeof configRes.setupHint === "string" ? configRes.setupHint : null);
 
     if ("error" in status) {
       setLoadError(status.error || "Failed to load verification status");
@@ -59,15 +63,14 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
   }, [refreshStatus]);
 
   useEffect(() => {
-    if (promptEnrollment && !loading && !enrolled && hasPhoto) {
+    if (promptEnrollment && !loading && !enrolled && hasPhoto && providerReady) {
       if (provider === "didit") {
-        // Keep Didit button visible; scroll into view
         document.getElementById("face-enrollment")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      } else {
+      } else if (provider === "aws" || provider === "local") {
         setShowCapture(true);
       }
     }
-  }, [promptEnrollment, loading, enrolled, hasPhoto, provider]);
+  }, [promptEnrollment, loading, enrolled, hasPhoto, provider, providerReady]);
 
   useEffect(() => {
     if (promptEnrollment && !loading && !hasPhoto) {
@@ -279,11 +282,18 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
           </Alert>
         )}
 
+        {setupHint && (
+          <Alert variant="destructive">
+            <AlertTitle>AWS not connected yet</AlertTitle>
+            <AlertDescription>{setupHint}</AlertDescription>
+          </Alert>
+        )}
+
         {!hasPhoto && (
           <Alert>
             <AlertTitle>Profile photo required</AlertTitle>
             <AlertDescription>
-              Take or upload a clear face photo above first, then continue face verification here.
+              Capture a clear face photo with the camera above first, then continue AWS face verification here.
             </AlertDescription>
           </Alert>
         )}
@@ -359,12 +369,15 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
         ) : (
           <>
             {!enrolled && !showCapture && (
-              <Button onClick={() => setShowCapture(true)} disabled={processing || !hasPhoto}>
+              <Button
+                onClick={() => setShowCapture(true)}
+                disabled={processing || !hasPhoto || !providerReady}
+              >
                 {provider === "aws" ? "Start AWS face verification" : "Start face registration"}
               </Button>
             )}
 
-            {(showCapture || (enrolled && showCapture)) && (
+            {providerReady && (showCapture || (enrolled && showCapture)) && (
               <FaceRegistrationCapture
                 disabled={processing}
                 onComplete={(result) => void handleLocalOrAwsComplete(result)}

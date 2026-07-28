@@ -68,8 +68,8 @@ export default async function ProfilePage({
         <h2 className="text-2xl font-bold tracking-tight">My Profile</h2>
         <p className="text-muted-foreground">
           {promptEnrollment
-            ? "Required: Step 1 — capture your face with the camera. Step 2 — complete face verification. Then you can use the portal and clock in at reception."
-            : "Your camera photo and face enrollment are used to match you at the reception kiosk. Clock in/out is only at the office kiosk."}
+            ? "Required: Step 1 — capture your face with the camera. Step 2 — AWS face verification. Then you can use the portal and clock in at reception."
+            : "Your camera photo and AWS face verification are used at the reception kiosk. Clock in/out is only at the office kiosk."}
         </p>
         {profile.employee_code && (
           <p className="mt-1 text-sm font-medium">

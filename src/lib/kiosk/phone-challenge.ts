@@ -133,8 +133,8 @@ export async function getPhoneChallengePublic(token: string) {
     .single();
 
   let provider = normalizeBiometricProvider(org?.biometric_provider);
-  if (provider === "didit" && !isDiditConfigured()) provider = "local";
-  if (provider === "aws" && !isAwsRekognitionConfigured()) provider = "local";
+  const awsOk = isAwsRekognitionConfigured();
+  const diditOk = isDiditConfigured();
 
   return {
     challenge: {
@@ -151,6 +151,8 @@ export async function getPhoneChallengePublic(token: string) {
       organizationName: org?.name || "Organization",
       kioskName: kiosk?.device_name || "Reception kiosk",
       provider,
+      providerReady:
+        provider === "aws" ? awsOk : provider === "didit" ? diditOk : true,
     },
   };
 }
@@ -245,8 +247,18 @@ export async function completePhoneClockChallenge(input: {
     .single();
 
   let provider = normalizeBiometricProvider(org?.biometric_provider);
-  if (provider === "didit" && !isDiditConfigured()) provider = "local";
-  if (provider === "aws" && !isAwsRekognitionConfigured()) provider = "local";
+  if (provider === "aws" && !isAwsRekognitionConfigured()) {
+    await failChallenge(challenge.id, "AWS not configured on server");
+    return {
+      success: false,
+      message:
+        "AWS Rekognition is not configured on the server. Ask your admin to add AWS keys on Vercel.",
+    };
+  }
+  if (provider === "didit" && !isDiditConfigured()) {
+    await failChallenge(challenge.id, "Didit not configured");
+    return { success: false, message: "Didit is not configured on the server." };
+  }
 
   let confidence: number | null = null;
   let livenessPassed = true;

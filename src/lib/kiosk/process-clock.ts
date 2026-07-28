@@ -215,6 +215,25 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
   const useDidit = provider === "didit" && diditEnabled;
   const useAws = provider === "aws" && awsEnabled;
 
+  if (provider === "aws" && !awsEnabled) {
+    await logAttempt(input, "liveness_fail", { reason: "aws_not_configured" });
+    return {
+      success: false,
+      status: "rejected",
+      message:
+        "AWS Rekognition is not configured on the server. Ask your admin to add AWS keys on Vercel and redeploy.",
+    };
+  }
+
+  if (provider === "didit" && !diditEnabled) {
+    await logAttempt(input, "liveness_fail", { reason: "didit_not_configured" });
+    return {
+      success: false,
+      status: "rejected",
+      message: "Didit is not configured on the server.",
+    };
+  }
+
   if (useDidit) {
     if (!staff.avatar_url) {
       return enqueueReview(input, "photo_review", staff);
@@ -381,7 +400,16 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
     }
   }
 
-  // Local / fallback: PIN + local photo
+  // Local only when org explicitly uses local
+  if (provider !== "local") {
+    await logAttempt(input, "liveness_fail", { reason: "provider_not_ready", provider });
+    return {
+      success: false,
+      status: "rejected",
+      message: "Face verification provider is not ready. Contact your admin.",
+    };
+  }
+
   if (!input.photoCaptureUrl?.trim()) {
     return enqueueReview(input, "missing_photo", staff);
   }

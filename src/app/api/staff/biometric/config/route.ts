@@ -3,7 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isDiditConfigured } from "@/lib/didit/client";
 import { isAwsRekognitionConfigured } from "@/lib/aws/rekognition";
-import { normalizeBiometricProvider } from "@/lib/biometrics/providers";
+import {
+  isBiometricProviderReady,
+  normalizeBiometricProvider,
+} from "@/lib/biometrics/providers";
 
 /** Staff portal: which biometric provider this organization uses. */
 export async function GET() {
@@ -33,15 +36,18 @@ export async function GET() {
   const provider = normalizeBiometricProvider(org?.biometric_provider);
   const diditOk = isDiditConfigured();
   const awsOk = isAwsRekognitionConfigured();
-
-  // Fall back to local if selected provider is not configured
-  let effective = provider;
-  if (provider === "didit" && !diditOk) effective = "local";
-  if (provider === "aws" && !awsOk) effective = "local";
+  const ready = isBiometricProviderReady(provider, {
+    awsConfigured: awsOk,
+    diditConfigured: diditOk,
+  });
 
   return NextResponse.json({
-    provider: effective,
-    configuredProvider: provider,
+    provider,
+    ready,
     availability: { local: true, didit: diditOk, aws: awsOk },
+    setupHint:
+      provider === "aws" && !awsOk
+        ? "AWS keys are not on the Vercel server yet. Admin must add AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_REGION, then redeploy."
+        : undefined,
   });
 }

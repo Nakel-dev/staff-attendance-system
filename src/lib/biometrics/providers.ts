@@ -12,3 +12,13 @@ export function normalizeBiometricProvider(value: unknown): BiometricProvider {
   if (value === "didit" || value === "aws" || value === "local") return value;
   return "aws";
 }
+
+/** Whether the deployment can run the org's chosen provider (no silent downgrade). */
+export function isBiometricProviderReady(
+  provider: BiometricProvider,
+  opts: { awsConfigured: boolean; diditConfigured: boolean }
+): boolean {
+  if (provider === "aws") return opts.awsConfigured;
+  if (provider === "didit") return opts.diditConfigured;
+  return true;
+}
