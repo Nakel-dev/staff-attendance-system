@@ -7,11 +7,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AwsPhoneClockCapture } from "@/components/clock/AwsPhoneClockCapture";
+import { LocalPhoneClockCapture } from "@/components/clock/LocalPhoneClockCapture";
 import { fetchWithTimeout } from "@/lib/utils/fetch-with-timeout";
-import {
-  LiveFaceVerifyCapture,
-  type LiveFaceVerifyResult,
-} from "@/components/face/LiveFaceVerifyCapture";
 
 type Provider = "local" | "aws" | "didit";
 
@@ -26,7 +23,6 @@ type ChallengeInfo = {
   organizationName: string;
   kioskName: string;
   provider: Provider;
-  awsLiveness?: boolean;
 };
 
 const DIDIT_KEY = (token: string) => `phone_clock_didit:${token}`;
@@ -187,15 +183,22 @@ export function PhoneClockClient({ token }: { token: string }) {
     }
   };
 
-  const submitPhoto = async (blob: Blob, faceDescriptor?: number[]) => {
+  const submitPhoto = async (blob: Blob, opts?: { faceDescriptor?: number[]; motionScore?: number }) => {
     setSubmitting(true);
     try {
       const form = new FormData();
       form.append("file", blob, "selfie.jpg");
-      if (faceDescriptor?.length) {
-        form.append("faceDescriptor", JSON.stringify(faceDescriptor));
+      if (opts?.faceDescriptor?.length) {
+        form.append("faceDescriptor", JSON.stringify(opts.faceDescriptor));
       }
-      const res = await fetch(`/api/clock/${token}/complete`, { method: "POST", body: form });
+      if (opts?.motionScore != null) {
+        form.append("motionScore", String(opts.motionScore));
+      }
+      const res = await fetchWithTimeout(`/api/clock/${token}/complete`, {
+        method: "POST",
+        body: form,
+        timeoutMs: 90000,
+      });
       const data = (await res.json()) as { success?: boolean; message?: string; error?: string };
       if (data.success) {
         setDoneMessage(data.message || "Clocked successfully");
@@ -204,15 +207,22 @@ export function PhoneClockClient({ token }: { token: string }) {
         toast.error(data.message || data.error || "Could not clock");
         setError(data.message || data.error || "Could not clock");
       }
-    } catch {
-      toast.error("Network error");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Network error");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const submitLocalFace = async (result: LiveFaceVerifyResult) => {
-    await submitPhoto(result.blob, result.descriptor);
+  const submitLocalClock = async (payload: {
+    blob: Blob;
+    descriptor: number[];
+    motionScore: number;
+  }) => {
+    await submitPhoto(payload.blob, {
+      faceDescriptor: payload.descriptor,
+      motionScore: payload.motionScore,
+    });
   };
 
   if (loading) {
@@ -294,13 +304,14 @@ export function PhoneClockClient({ token }: { token: string }) {
               </div>
             ) : challenge.provider === "aws" ? (
               <AwsPhoneClockCapture
-                token={token}
-                awsLiveness={!!challenge.awsLiveness}
                 disabled={submitting}
                 onSubmit={submitAws}
               />
             ) : (
-              <LiveFaceVerifyCapture onCapture={(r) => void submitLocalFace(r)} />
+              <LocalPhoneClockCapture
+                disabled={submitting}
+                onSubmit={submitLocalClock}
+              />
             )}
           </div>
         )}

@@ -8,19 +8,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { clearFaceEnrollment, getFaceEnrollmentStatus } from "@/lib/actions/face";
-import { createClient } from "@/lib/supabase/client";
 import { AwsFaceEnrollmentCapture } from "@/components/face/AwsFaceEnrollmentCapture";
-import {
-  FaceRegistrationCapture,
-  type FaceRegistrationCaptureResult,
-} from "@/components/face/FaceRegistrationCapture";
+import { LocalFaceEnrollmentCapture } from "@/components/face/LocalFaceEnrollmentCapture";
 import type { BiometricProvider } from "@/lib/biometrics/providers";
 
 type VerifyPhase = "idle" | "waiting" | "done";
 
 export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollment?: boolean }) {
   const [provider, setProvider] = useState<BiometricProvider>("aws");
-  const [providerReady, setProviderReady] = useState(false);
+  const [providerReady, setProviderReady] = useState(true);
   const [setupHint, setSetupHint] = useState<string | null>(null);
   const [enrolled, setEnrolled] = useState(false);
   const [enrolledAt, setEnrolledAt] = useState<string | null>(null);
@@ -163,54 +159,13 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
     if (promptEnrollment) window.location.href = "/my-attendance";
   };
 
-  const handleLocalComplete = async (capture: FaceRegistrationCaptureResult) => {
-    setProcessing(true);
-    try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not signed in");
-
-      let referenceClipUrl: string | undefined;
-      if (capture.referenceClipBlob) {
-        const path = `${user.id}/registration-${Date.now()}.webm`;
-        const { error: uploadError } = await supabase.storage
-          .from("face-reference-clips")
-          .upload(path, capture.referenceClipBlob, {
-            contentType: capture.referenceClipBlob.type || "video/webm",
-            upsert: true,
-          });
-        if (uploadError) throw new Error(uploadError.message);
-        referenceClipUrl = path;
-      }
-
-      const res = await fetch("/api/staff/register-face", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          embeddings: capture.angles.map((angle) => ({
-            angle: angle.angle,
-            descriptor: angle.descriptor,
-            referenceClipUrl,
-          })),
-          referenceClipUrl,
-          motionScore: capture.motionScore,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Registration failed");
-
-      setEnrolled(true);
-      setEnrolledAt(new Date().toISOString());
-      setShowCapture(false);
-      toast.success("Face registered. You can clock in at the reception kiosk.");
-      if (promptEnrollment) window.location.href = "/my-attendance";
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Face registration failed");
-    } finally {
-      setProcessing(false);
-    }
+  const handleLocalEnrollmentSuccess = (result: { enrolledAt: string }) => {
+    setEnrolled(true);
+    setEnrolledAt(result.enrolledAt);
+    setShowCapture(false);
+    setProcessing(false);
+    toast.success("Face registered. You can clock in at the reception kiosk.");
+    if (promptEnrollment) window.location.href = "/my-attendance";
   };
 
   const handleClear = async () => {
@@ -251,7 +206,7 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
       ? "Required at signup: verify your live face matches your camera photo. Daily clock-in matches this enrollment."
       : provider === "aws"
         ? "Required at signup: complete a live face check, then AWS compares it to your profile photo."
-        : "Required at signup: register face angles here. Daily clock-in matches this enrollment at the kiosk.";
+        : "Required at signup: record a live clip here. Kiosk matching uses your reference photo above.";
 
   return (
     <Card
@@ -379,9 +334,10 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
             )}
 
             {providerReady && showCapture && provider === "local" && (
-              <FaceRegistrationCapture
+              <LocalFaceEnrollmentCapture
                 disabled={processing}
-                onComplete={(result) => void handleLocalComplete(result)}
+                onStop={() => setShowCapture(false)}
+                onSuccess={handleLocalEnrollmentSuccess}
               />
             )}
 

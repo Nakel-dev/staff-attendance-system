@@ -8,6 +8,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { uploadProfilePhoto } from "@/lib/actions/profile-photo";
+import { extractDescriptorFromJpegBlob, preloadRegistrationModels } from "@/lib/face/client";
+import { fetchWithTimeout } from "@/lib/utils/fetch-with-timeout";
 import { getInitials } from "@/lib/utils/formatDate";
 import type { Profile } from "@/lib/types";
 
@@ -42,6 +44,7 @@ export function ProfilePhotoCard({
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraStarting, setCameraStarting] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -73,6 +76,7 @@ export function ProfilePhotoCard({
 
   useEffect(() => {
     if (!editable) return;
+    if (cameraOpen || promptCapture) preloadRegistrationModels();
     if (promptCapture && !profile.avatar_url) {
       void startCamera();
     }
@@ -82,17 +86,37 @@ export function ProfilePhotoCard({
 
   const savePhoto = async (file: File) => {
     setUploading(true);
+    setSaveStatus("Uploading photo…");
     const formData = new FormData();
     formData.append("file", file);
     const result = await uploadProfilePhoto(formData, staffProfileId);
-    setUploading(false);
 
     if (result.error) {
+      setUploading(false);
+      setSaveStatus(null);
       toast.error(result.error);
       return;
     }
 
     if (result.signedUrl) setPreviewUrl(result.signedUrl);
+
+    try {
+      setSaveStatus("Preparing face matching… (first time may take a minute)");
+      const descriptor = await extractDescriptorFromJpegBlob(file);
+      await fetchWithTimeout("/api/staff/profile-face-descriptor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ descriptor }),
+        timeoutMs: 30000,
+      });
+    } catch {
+      toast.message(
+        "Photo saved. If face registration fails below, tap Retake with camera and wait for face matching to finish."
+      );
+    }
+
+    setUploading(false);
+    setSaveStatus(null);
     toast.success("Reference photo saved. Continue with face verification below.");
     stopCamera();
     setCameraOpen(false);
@@ -162,6 +186,9 @@ export function ProfilePhotoCard({
               <p className="text-muted-foreground text-xs">
                 Look straight at the camera with good lighting. No file upload.
               </p>
+              {saveStatus && (
+                <p className="text-muted-foreground text-xs">{saveStatus}</p>
+              )}
             </div>
           )}
         </div>

@@ -336,7 +336,17 @@ export async function completePhoneClockChallenge(input: {
     confidence = comparison.similarity;
     photoPath = await storePhoneCapture(challenge.staff_id, targetBytes);
   } else {
-    // local: match live face descriptor against signup enrollment embeddings
+    // local: motion liveness + match live descriptor against enrollment
+    const motionScore = input.motionScore;
+    if (!Number.isFinite(motionScore) || (motionScore as number) < MIN_MOTION_SCORE) {
+      await failChallenge(challenge.id, "missing_motion_liveness");
+      return {
+        success: false,
+        message:
+          "Live video required — static photos and phone screens are not accepted. Record the 3-second live check.",
+      };
+    }
+
     if (!input.faceDescriptor || !isValidFaceDescriptor(input.faceDescriptor)) {
       return {
         success: false,

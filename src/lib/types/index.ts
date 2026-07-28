@@ -43,6 +43,7 @@ export interface Profile {
   employee_code?: string | null;
   role: Role;
   avatar_url?: string;
+  face_descriptor?: number[] | null;
   face_enrolled_at?: string | null;
   face_reference_photo_url?: string | null;
   face_reference_video_url?: string | null;

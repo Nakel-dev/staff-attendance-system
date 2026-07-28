@@ -84,6 +84,64 @@ export async function loadFaceRegistrationModels() {
   return loadRegistrationRecognitionModel();
 }
 
+/** Warm up tiny detector + recognition net in the background (profile photo / local clock). */
+export function preloadRegistrationModels() {
+  void loadRegistrationRecognitionModel().catch(() => undefined);
+}
+
+function withTimeout<T>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    Promise.resolve(promise)
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
+/** One-time face template from a JPEG — used when saving profile photo, not during live enrollment. */
+export async function extractDescriptorFromJpegBlob(blob: Blob): Promise<number[]> {
+  const faceapi = await withTimeout(
+    loadRegistrationRecognitionModel(),
+    90000,
+    "Face model load timed out. Use Wi-Fi, refresh, and try again."
+  );
+
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = await faceapi.fetchImage(url);
+    const canvas = document.createElement("canvas");
+    const w = img.width || 640;
+    const h = img.height || 480;
+    const scale = Math.min(1, 280 / Math.max(w, h));
+    canvas.width = Math.round(w * scale);
+    canvas.height = Math.round(h * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Could not process photo");
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    const options = new faceapi.TinyFaceDetectorOptions(DESCRIPTOR_OPTIONS);
+    const detection = await Promise.race([
+      faceapi.detectSingleFace(canvas, options).withFaceLandmarks(true).withFaceDescriptor(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Face detection timed out. Retake with good lighting.")), 30000)
+      ),
+    ]);
+
+    if (!detection?.descriptor) {
+      throw new Error("No face found in photo. Center your face with good lighting.");
+    }
+    return Array.from(detection.descriptor);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export async function captureLivenessLandmarkFrame(
   video: HTMLVideoElement
 ): Promise<number[] | null> {
