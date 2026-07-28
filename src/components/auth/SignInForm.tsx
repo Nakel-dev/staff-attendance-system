@@ -44,16 +44,16 @@ export function SignInForm({ onSwitchToSignUp, onForgotPassword }: SignInFormPro
     try {
       const result = await signInUser(email, password);
       if (result.error) {
-        if (result.error.includes("Invalid login credentials")) {
-          setError("Wrong credentials. Please check your email and password.");
-        } else {
-          setError(result.error);
-        }
+        const message =
+          typeof result.error === "string" && result.error.trim() && result.error.trim() !== "{}"
+            ? result.error.trim()
+            : "Sign in failed. Please try again.";
+        setError(message);
         return;
       }
       window.location.href = result.role === "admin" ? "/dashboard" : "/my-attendance";
     } catch {
-      setError("An unexpected error occurred. Please try again.");
+      setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }

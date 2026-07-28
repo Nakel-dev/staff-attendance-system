@@ -72,7 +72,9 @@ export async function registerOrganization(data: {
       email_confirm: true,
     });
 
-    if (authError) return { error: authError.message };
+    if (authError) {
+      return { error: toUserFacingAuthError(authError, "Registration failed. Please try again.") };
+    }
 
     const { data: org, error: orgError } = await admin
       .from("organizations")
@@ -91,7 +93,9 @@ export async function registerOrganization(data: {
 
     if (orgError || !org) {
       await admin.auth.admin.deleteUser(authUser.user.id);
-      return { error: orgError?.message || "Failed to create organization" };
+      return {
+        error: toUserFacingAuthError(orgError, "Failed to create organization. Please try again."),
+      };
     }
 
     const { error: profileError } = await admin.from("profiles").insert({
@@ -108,13 +112,16 @@ export async function registerOrganization(data: {
     if (profileError) {
       await admin.from("organizations").delete().eq("id", org.id);
       await admin.auth.admin.deleteUser(authUser.user.id);
-      return { error: profileError.message };
+      return {
+        error: toUserFacingAuthError(profileError, "Failed to create your profile. Please try again."),
+      };
     }
 
     revalidatePath("/auth");
     return { success: true, inviteCode: org.invite_code };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Registration failed" };
+    console.error("[registerOrganization]", err);
+    return { error: toUserFacingAuthError(err, "Registration failed. Please try again.") };
   }
 }
 
@@ -152,7 +159,9 @@ export async function registerStaffMember(data: {
       email_confirm: true,
     });
 
-    if (authError) return { error: authError.message };
+    if (authError) {
+      return { error: toUserFacingAuthError(authError, "Registration failed. Please try again.") };
+    }
 
     const { error: profileError } = await admin.from("profiles").insert({
       user_id: authUser.user.id,
@@ -167,13 +176,16 @@ export async function registerStaffMember(data: {
 
     if (profileError) {
       await admin.auth.admin.deleteUser(authUser.user.id);
-      return { error: profileError.message };
+      return {
+        error: toUserFacingAuthError(profileError, "Failed to create your profile. Please try again."),
+      };
     }
 
     revalidatePath("/auth");
     return { success: true, organizationName: org.name };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Registration failed" };
+    console.error("[registerStaffMember]", err);
+    return { error: toUserFacingAuthError(err, "Registration failed. Please try again.") };
   }
 }
 
@@ -186,7 +198,9 @@ export async function signInUser(email: string, password: string) {
       password,
     });
 
-    if (error) return { error: error.message };
+    if (error) {
+      return { error: toUserFacingAuthError(error, "Sign in failed. Please try again.") };
+    }
     if (!data.user) return { error: "Sign in failed. Please try again." };
 
     // Use service role: same-request profile reads via anon client can fail before JWT applies
@@ -197,7 +211,18 @@ export async function signInUser(email: string, password: string) {
       .eq("user_id", data.user.id)
       .maybeSingle();
 
-    if (profileError || !profile) {
+    if (profileError) {
+      console.error("[signInUser] profile lookup", profileError);
+      await supabase.auth.signOut();
+      return {
+        error: toUserFacingAuthError(
+          profileError,
+          "Sign in failed. Please try again in a moment."
+        ),
+      };
+    }
+
+    if (!profile) {
       await supabase.auth.signOut();
       return {
         error: "No profile found for this account. Register an organization first or contact support.",
@@ -211,7 +236,8 @@ export async function signInUser(email: string, password: string) {
 
     return { success: true, role: profile.role as "admin" | "staff" };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Sign in failed" };
+    console.error("[signInUser]", err);
+    return { error: toUserFacingAuthError(err, "Sign in failed. Please try again.") };
   }
 }
 
@@ -245,12 +271,74 @@ export async function getOrganizationInviteCode() {
   }
 }
 
+/** Turn any thrown/API value into a plain string (never "{}" / empty). */
+function rawErrorText(err: unknown): string {
+  if (err == null) return "";
+  if (typeof err === "string") return err.trim();
+  if (err instanceof Error && err.message.trim()) return err.message.trim();
+  if (typeof err === "object") {
+    const maybe = err as { message?: unknown; error_description?: unknown; msg?: unknown };
+    for (const key of ["message", "error_description", "msg"] as const) {
+      const value = maybe[key];
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+  }
+  return "";
+}
+
+/** Map auth/backend noise to short user-facing copy. */
+function toUserFacingAuthError(err: unknown, fallback = "Something went wrong. Please try again.") {
+  const message = rawErrorText(err);
+  if (!message || message === "{}" || message === "[object Object]") return fallback;
+
+  const lower = message.toLowerCase();
+  if (lower.includes("invalid login credentials") || lower.includes("invalid_credentials")) {
+    return "Wrong email or password. Please try again.";
+  }
+  if (lower.includes("email not confirmed")) {
+    return "Please confirm your email before signing in.";
+  }
+  if (lower.includes("user already registered") || lower.includes("already been registered")) {
+    return "An account with this email already exists. Sign in instead.";
+  }
+  if (
+    lower.includes("fetch failed") ||
+    lower.includes("failed to fetch") ||
+    lower.includes("network") ||
+    lower.includes("enotfound") ||
+    lower.includes("econnrefused") ||
+    lower.includes("timeout")
+  ) {
+    return "Cannot reach the server right now. Check your connection and try again.";
+  }
+  if (lower.includes("supabasekey is required") || lower.includes("supabase url is required") || lower.includes("admin credentials are not configured")) {
+    return "Sign-in is temporarily unavailable. Please try again shortly.";
+  }
+  if (lower.includes("rate limit") || lower.includes("too many")) {
+    return "Too many attempts. Wait a few minutes, then try again.";
+  }
+  if (lower.includes("jwt") || lower.includes("session")) {
+    return "Your session expired. Please sign in again.";
+  }
+  // Hide PostgREST / SQL / stack-looking messages
+  if (
+    /^pgrst/i.test(message) ||
+    lower.includes("schema cache") ||
+    lower.includes("permission denied") ||
+    lower.includes("row-level security") ||
+    message.length > 180
+  ) {
+    return fallback;
+  }
+  return message;
+}
+
 function mapAuthError(message: string) {
   const lower = message.toLowerCase();
   if (lower.includes("rate limit") || lower.includes("too many")) {
     return "Too many reset emails were sent. Wait about 1 hour, then try again.";
   }
-  return message;
+  return toUserFacingAuthError(message, "Failed to send reset email. Please try again.");
 }
 
 export async function requestPasswordReset(email: string) {
@@ -264,7 +352,8 @@ export async function requestPasswordReset(email: string) {
     if (error) return { error: mapAuthError(error.message) };
     return { success: true };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Failed to send reset email" };
+    console.error("[requestPasswordReset]", err);
+    return { error: toUserFacingAuthError(err, "Failed to send reset email. Please try again.") };
   }
 }
 
@@ -274,9 +363,12 @@ export async function updatePassword(password: string) {
     const { createClient } = await import("@/lib/supabase/server");
     const supabase = await createClient();
     const { error } = await supabase.auth.updateUser({ password });
-    if (error) return { error: error.message };
+    if (error) {
+      return { error: toUserFacingAuthError(error, "Failed to update password. Please try again.") };
+    }
     return { success: true };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Failed to update password" };
+    console.error("[updatePassword]", err);
+    return { error: toUserFacingAuthError(err, "Failed to update password. Please try again.") };
   }
 }
