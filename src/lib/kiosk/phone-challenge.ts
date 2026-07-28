@@ -8,6 +8,11 @@ import {
   isAwsRekognitionConfigured,
 } from "@/lib/aws/rekognition";
 import {
+  getFaceLivenessSessionResults,
+  isAwsFaceLivenessConfigured,
+} from "@/lib/aws/face-liveness";
+import { MIN_MOTION_SCORE } from "@/lib/face/liveness";
+import {
   getDiditSessionDecision,
   isDiditConfigured,
 } from "@/lib/didit/client";
@@ -153,6 +158,7 @@ export async function getPhoneChallengePublic(token: string) {
       provider,
       providerReady:
         provider === "aws" ? awsOk : provider === "didit" ? diditOk : true,
+      awsLiveness: isAwsFaceLivenessConfigured(),
     },
   };
 }
@@ -199,6 +205,8 @@ export async function completePhoneClockChallenge(input: {
   photoBytes?: Uint8Array;
   faceDescriptor?: number[];
   diditSessionId?: string;
+  motionScore?: number;
+  livenessSessionId?: string;
 }): Promise<{ success: boolean; message: string; status?: string }> {
   const admin = createAdminClient();
   const { data: challenge } = await admin
@@ -283,12 +291,40 @@ export async function completePhoneClockChallenge(input: {
     confidence = decision.faceMatchScore ?? null;
     livenessPassed = true;
   } else if (provider === "aws") {
-    if (!input.photoBytes?.byteLength) {
+    let targetBytes = input.photoBytes;
+
+    if (input.livenessSessionId?.trim()) {
+      const liveness = await getFaceLivenessSessionResults(input.livenessSessionId.trim());
+      if (!liveness.passed) {
+        await failChallenge(challenge.id, `AWS liveness ${liveness.confidence}`);
+        return {
+          success: false,
+          message: `Live face check failed (${liveness.confidence.toFixed(0)}% confidence). Try again.`,
+        };
+      }
+      if (!liveness.referenceImageBytes?.byteLength) {
+        await failChallenge(challenge.id, "AWS liveness missing reference image");
+        return { success: false, message: "Live face check failed. Try again." };
+      }
+      targetBytes = liveness.referenceImageBytes;
+    } else {
+      const motionScore = input.motionScore;
+      if (!Number.isFinite(motionScore) || (motionScore as number) < MIN_MOTION_SCORE) {
+        await failChallenge(challenge.id, "missing_motion_liveness");
+        return {
+          success: false,
+          message:
+            "Live video required — static photos and phone screens are not accepted. Record the 3-second live check.",
+        };
+      }
+    }
+
+    if (!targetBytes?.byteLength) {
       return { success: false, message: "Take a live selfie to continue." };
     }
     const comparison = await compareFacesAws({
       sourceAvatarPath: staff.avatar_url,
-      targetImageBytes: input.photoBytes,
+      targetImageBytes: targetBytes,
     });
     if (!comparison.matched) {
       await failChallenge(challenge.id, `AWS similarity ${comparison.similarity}`);
@@ -298,7 +334,7 @@ export async function completePhoneClockChallenge(input: {
       };
     }
     confidence = comparison.similarity;
-    photoPath = await storePhoneCapture(challenge.staff_id, input.photoBytes);
+    photoPath = await storePhoneCapture(challenge.staff_id, targetBytes);
   } else {
     // local: match live face descriptor against signup enrollment embeddings
     if (!input.faceDescriptor || !isValidFaceDescriptor(input.faceDescriptor)) {

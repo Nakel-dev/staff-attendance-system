@@ -20,7 +20,7 @@ type VerifyPhase = "idle" | "waiting" | "done";
 
 export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollment?: boolean }) {
   const [provider, setProvider] = useState<BiometricProvider>("aws");
-  const [providerReady, setProviderReady] = useState(true);
+  const [providerReady, setProviderReady] = useState(false);
   const [setupHint, setSetupHint] = useState<string | null>(null);
   const [enrolled, setEnrolled] = useState(false);
   const [enrolledAt, setEnrolledAt] = useState<string | null>(null);
@@ -250,7 +250,7 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
     provider === "didit"
       ? "Required at signup: verify your live face matches your camera photo. Daily clock-in matches this enrollment."
       : provider === "aws"
-        ? "Required at signup: capture one live selfie. AWS Rekognition compares it to your profile photo."
+        ? "Required at signup: complete a live face check, then AWS compares it to your profile photo."
         : "Required at signup: register face angles here. Daily clock-in matches this enrollment at the kiosk.";
 
   return (

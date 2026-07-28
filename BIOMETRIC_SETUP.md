@@ -57,8 +57,10 @@ Run in **Supabase SQL Editor** (if not already):
 
 | Step | AWS usage |
 |------|-----------|
-| Staff signup | Camera reference photo → guided liveness → **CompareFaces** vs reference |
-| Kiosk / phone QR clock | Live selfie → **CompareFaces** vs signup reference photo |
+| Staff signup | Live check (motion or AWS Face Liveness) → **CompareFaces** vs profile photo |
+| Kiosk / phone QR clock | Same live check → **CompareFaces** vs signup photo |
+
+**Anti-spoof:** Without Cognito, a **3-second motion clip** blocks static photos. For screen-replay protection, add **AWS Face Liveness** — see [`docs/aws-face-liveness-cognito.md`](docs/aws-face-liveness-cognito.md).
 
 Cost: about **$0.001 per compare** (Rekognition pricing).
 

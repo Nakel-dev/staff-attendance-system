@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Loader2, MapPin, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { updateAttendanceSecuritySettings } from "@/lib/actions/organization";
@@ -18,12 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ATTENDANCE_MODE_LABELS, ATTENDANCE_MODES } from "@/constants";
-import {
-  BIOMETRIC_PROVIDER_LABELS,
-  BIOMETRIC_PROVIDERS,
-  normalizeBiometricProvider,
-  type BiometricProvider,
-} from "@/lib/biometrics/providers";
+import { normalizeBiometricProvider } from "@/lib/biometrics/providers";
 import type { AttendanceMode } from "@/lib/types";
 
 interface AttendanceSecuritySettingsProps {
@@ -57,14 +52,6 @@ export function AttendanceSecuritySettings({ initial }: AttendanceSecuritySettin
   const [requireQr, setRequireQr] = useState(
     initial.require_qr_code ?? initialPreset.requireQrCode
   );
-  const [biometricProvider, setBiometricProvider] = useState<BiometricProvider>(
-    normalizeBiometricProvider(initial.biometric_provider)
-  );
-  const [availability, setAvailability] = useState({
-    local: true,
-    didit: false,
-    aws: false,
-  });
   const [latitude, setLatitude] = useState(
     initial.office_latitude != null ? String(initial.office_latitude) : ""
   );
@@ -74,19 +61,6 @@ export function AttendanceSecuritySettings({ initial }: AttendanceSecuritySettin
   const [radius, setRadius] = useState(String(initial.geofence_radius_m ?? 150));
   const [saving, setSaving] = useState(false);
   const [locating, setLocating] = useState(false);
-
-  useEffect(() => {
-    void fetch("/api/admin/biometric-availability")
-      .then((r) => r.json())
-      .then((d: { local?: boolean; didit?: boolean; aws?: boolean }) => {
-        setAvailability({
-          local: d.local !== false,
-          didit: !!d.didit,
-          aws: !!d.aws,
-        });
-      })
-      .catch(() => undefined);
-  }, []);
 
   const applyModePreset = (nextMode: AttendanceMode) => {
     setMode(nextMode);
@@ -119,17 +93,6 @@ export function AttendanceSecuritySettings({ initial }: AttendanceSecuritySettin
   };
 
   const handleSave = async () => {
-    if (biometricProvider === "didit" && !availability.didit) {
-      toast.error("Didit is not configured on the server (DIDIT_API_KEY / DIDIT_WORKFLOW_ID).");
-      return;
-    }
-    if (biometricProvider === "aws" && !availability.aws) {
-      toast.error(
-        "AWS Rekognition is not configured (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION)."
-      );
-      return;
-    }
-
     setSaving(true);
     const result = await updateAttendanceSecuritySettings({
       attendanceMode: mode,
@@ -140,7 +103,7 @@ export function AttendanceSecuritySettings({ initial }: AttendanceSecuritySettin
       requireFaceMatch: requireFace,
       requireGeofence: requireGeofence,
       requireQrCode: requireQr,
-      biometricProvider,
+      biometricProvider: normalizeBiometricProvider(initial.biometric_provider),
     });
     setSaving(false);
     if (result.error) {
@@ -165,31 +128,6 @@ export function AttendanceSecuritySettings({ initial }: AttendanceSecuritySettin
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-2">
-          <Label>Face biometric provider</Label>
-          <Select
-            value={biometricProvider}
-            onValueChange={(value) => setBiometricProvider(value as BiometricProvider)}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {BIOMETRIC_PROVIDERS.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {BIOMETRIC_PROVIDER_LABELS[option]}
-                  {option === "didit" && !availability.didit ? " (not configured)" : ""}
-                  {option === "aws" && !availability.aws ? " (not configured)" : ""}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            Local is free. AWS is pay-as-you-go (usually a few dollars for small teams). Didit needs
-            your Didit plan credentials.
-          </p>
-        </div>
-
-        <div className="space-y-2">
           <Label>Quick preset</Label>
           <Select value={mode} onValueChange={(value) => applyModePreset(value as AttendanceMode)}>
             <SelectTrigger>
@@ -210,7 +148,7 @@ export function AttendanceSecuritySettings({ initial }: AttendanceSecuritySettin
             <Checkbox checked={requireVideo} onCheckedChange={(v) => setRequireVideo(!!v)} />
             <span>
               <span className="block text-sm font-medium">Live video liveness</span>
-              <span className="text-xs text-muted-foreground">Used by local/AWS portal enrollment</span>
+              <span className="text-xs text-muted-foreground">Motion clip during AWS/local enrollment</span>
             </span>
           </label>
           <label className="flex items-start gap-3 rounded-lg border p-3">

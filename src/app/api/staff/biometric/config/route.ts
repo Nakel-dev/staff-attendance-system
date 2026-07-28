@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isDiditConfigured } from "@/lib/didit/client";
 import { isAwsRekognitionConfigured } from "@/lib/aws/rekognition";
+import { isAwsFaceLivenessConfigured } from "@/lib/aws/face-liveness";
 import {
   isBiometricProviderReady,
   normalizeBiometricProvider,
@@ -44,6 +45,7 @@ export async function GET() {
   return NextResponse.json({
     provider,
     ready,
+    awsLiveness: isAwsFaceLivenessConfigured(),
     availability: { local: true, didit: diditOk, aws: awsOk },
     setupHint:
       provider === "aws" && !awsOk

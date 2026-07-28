@@ -3,9 +3,15 @@ export type BiometricProvider = "local" | "didit" | "aws";
 export const BIOMETRIC_PROVIDERS: BiometricProvider[] = ["local", "didit", "aws"];
 
 export const BIOMETRIC_PROVIDER_LABELS: Record<BiometricProvider, string> = {
-  local: "Local (free) — on-device face + motion liveness",
-  didit: "Didit — cloud face match + liveness",
-  aws: "AWS Rekognition — pay-as-you-go face match (~$0.001) + local liveness",
+  local: "Local (free)",
+  didit: "Didit",
+  aws: "AWS Rekognition",
+};
+
+export const BIOMETRIC_PROVIDER_HINTS: Record<BiometricProvider, string> = {
+  local: "On-device face match only — no cloud bill",
+  didit: "Third-party liveness + face match",
+  aws: "Live check + CompareFaces (~$0.001/compare)",
 };
 
 export function normalizeBiometricProvider(value: unknown): BiometricProvider {

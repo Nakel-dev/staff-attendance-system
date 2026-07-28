@@ -6,6 +6,15 @@
       "Effect": "Allow",
       "Action": ["rekognition:CompareFaces"],
       "Resource": "*"
+    },
+    {
+      "Sid": "AttendProRekognitionFaceLivenessServer",
+      "Effect": "Allow",
+      "Action": [
+        "rekognition:CreateFaceLivenessSession",
+        "rekognition:GetFaceLivenessSessionResults"
+      ],
+      "Resource": "*"
     }
   ]
 }

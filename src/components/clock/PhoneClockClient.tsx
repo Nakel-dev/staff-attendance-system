@@ -6,7 +6,7 @@ import { CheckCircle2, Loader2, ScanFace, Timer } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { KioskPhotoCapture } from "@/components/kiosk/KioskPhotoCapture";
+import { AwsPhoneClockCapture } from "@/components/clock/AwsPhoneClockCapture";
 import {
   LiveFaceVerifyCapture,
   type LiveFaceVerifyResult,
@@ -25,6 +25,7 @@ type ChallengeInfo = {
   organizationName: string;
   kioskName: string;
   provider: Provider;
+  awsLiveness?: boolean;
 };
 
 const DIDIT_KEY = (token: string) => `phone_clock_didit:${token}`;
@@ -154,6 +155,33 @@ export function PhoneClockClient({ token }: { token: string }) {
     }
   };
 
+  const submitAws = async (payload: {
+    photoBytes?: Blob;
+    motionScore?: number;
+    livenessSessionId?: string;
+  }) => {
+    setSubmitting(true);
+    try {
+      const form = new FormData();
+      if (payload.photoBytes) form.append("file", payload.photoBytes, "selfie.jpg");
+      if (payload.motionScore != null) form.append("motionScore", String(payload.motionScore));
+      if (payload.livenessSessionId) form.append("livenessSessionId", payload.livenessSessionId);
+      const res = await fetch(`/api/clock/${token}/complete`, { method: "POST", body: form });
+      const data = (await res.json()) as { success?: boolean; message?: string; error?: string };
+      if (data.success) {
+        setDoneMessage(data.message || "Clocked successfully");
+        toast.success(data.message || "Done");
+      } else {
+        toast.error(data.message || data.error || "Could not clock");
+        setError(data.message || data.error || "Could not clock");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const submitPhoto = async (blob: Blob, faceDescriptor?: number[]) => {
     setSubmitting(true);
     try {
@@ -260,7 +288,12 @@ export function PhoneClockClient({ token }: { token: string }) {
                 <Loader2 className="h-8 w-8 animate-spin" />
               </div>
             ) : challenge.provider === "aws" ? (
-              <KioskPhotoCapture onCapture={(blob) => void submitPhoto(blob)} />
+              <AwsPhoneClockCapture
+                token={token}
+                awsLiveness={!!challenge.awsLiveness}
+                disabled={submitting}
+                onSubmit={submitAws}
+              />
             ) : (
               <LiveFaceVerifyCapture onCapture={(r) => void submitLocalFace(r)} />
             )}

@@ -94,6 +94,12 @@ export async function POST(
       photoBytes,
       faceDescriptor,
       diditSessionId,
+      motionScore: (() => {
+        const raw = form.get("motionScore");
+        const value = raw != null ? Number(raw) : NaN;
+        return Number.isFinite(value) ? value : undefined;
+      })(),
+      livenessSessionId: String(form.get("livenessSessionId") || "").trim() || undefined,
     });
     return NextResponse.json(result, { status: result.success ? 200 : 422 });
   } catch (error) {

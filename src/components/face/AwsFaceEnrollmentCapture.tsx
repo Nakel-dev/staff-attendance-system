@@ -1,15 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AwsFaceLivenessCapture } from "@/components/face/AwsFaceLivenessCapture";
+import { MotionLivenessCapture } from "@/components/face/MotionLivenessCapture";
 
 export type AwsFaceEnrollmentResult = {
   enrolledAt: string;
   similarity: number;
+  livenessScore: number;
 };
 
-/** Single live selfie sent to AWS CompareFaces — no local face-api models. */
+type Mode = "loading" | "aws-liveness" | "motion";
+
+/**
+ * AWS enrollment: Face Liveness when Cognito is configured, otherwise motion liveness + CompareFaces.
+ */
 export function AwsFaceEnrollmentCapture({
   onSuccess,
   onStop,
@@ -19,154 +26,145 @@ export function AwsFaceEnrollmentCapture({
   onStop?: () => void;
   disabled?: boolean;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-
-  const [starting, setStarting] = useState(true);
+  const [mode, setMode] = useState<Mode>("loading");
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
 
-  const stopCamera = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
+  const startSession = useCallback(async () => {
+    setError(null);
+    setStatus("Starting AWS Face Liveness…");
+    const res = await fetch("/api/staff/aws/liveness/session", { method: "POST" });
+    const data = (await res.json()) as { sessionId?: string; error?: string };
+    if (!res.ok || !data.sessionId) {
+      throw new Error(data.error || "Could not start AWS Face Liveness");
+    }
+    setSessionId(data.sessionId);
+    setMode("aws-liveness");
+    setStatus(null);
   }, []);
 
-  const startCamera = useCallback(async () => {
-    setStarting(true);
-    setError(null);
-    stopCamera();
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-    } catch {
-      setError("Could not access camera. Allow camera permission and try again.");
-    } finally {
-      setStarting(false);
-    }
-  }, [stopCamera]);
-
   useEffect(() => {
-    void startCamera();
-    return () => stopCamera();
-  }, [startCamera, stopCamera]);
+    void (async () => {
+      try {
+        const configRes = await fetch("/api/staff/biometric/config");
+        const config = (await configRes.json()) as { awsLiveness?: boolean };
+        if (config.awsLiveness) {
+          await startSession();
+        } else {
+          setMode("motion");
+        }
+      } catch {
+        setMode("motion");
+      }
+    })();
+  }, [startSession]);
 
-  const captureAndVerify = async () => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas || disabled || busy) return;
-
+  const verifyWithSession = async (id: string) => {
     setBusy(true);
+    setStatus("Matching face with AWS Rekognition…");
     setError(null);
-    setStatus("Capturing photo…");
-
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      setBusy(false);
-      setStatus(null);
-      setError("Could not capture photo.");
-      return;
-    }
-
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.9)
-    );
-    if (!blob) {
-      setBusy(false);
-      setStatus(null);
-      setError("Could not capture photo.");
-      return;
-    }
-
-    stopCamera();
-    setStatus("Verifying with AWS Rekognition…");
-
     try {
       const form = new FormData();
-      form.append("file", blob, "live.jpg");
+      form.append("sessionId", id);
       const res = await fetch("/api/staff/aws/verify", { method: "POST", body: form });
       const data = (await res.json()) as {
         error?: string;
         enrolledAt?: string;
         similarity?: number;
+        livenessScore?: number;
       };
-      if (!res.ok) {
-        throw new Error(data.error || "AWS verification failed");
-      }
-
+      if (!res.ok) throw new Error(data.error || "AWS verification failed");
       onSuccess({
         enrolledAt: data.enrolledAt || new Date().toISOString(),
         similarity: Number(data.similarity || 0),
+        livenessScore: Number(data.livenessScore || 0),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "AWS verification failed");
-      setStatus(null);
       setBusy(false);
-      void startCamera();
+      setStatus(null);
     }
   };
 
-  const handleStop = () => {
-    stopCamera();
-    onStop?.();
+  const verifyWithMotion = async (blob: Blob, motionScore: number) => {
+    setBusy(true);
+    setStatus("Matching face with AWS Rekognition…");
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", blob, "live.jpg");
+      form.append("motionScore", String(motionScore));
+      const res = await fetch("/api/staff/aws/verify", { method: "POST", body: form });
+      const data = (await res.json()) as {
+        error?: string;
+        enrolledAt?: string;
+        similarity?: number;
+        livenessScore?: number;
+      };
+      if (!res.ok) throw new Error(data.error || "AWS verification failed");
+      onSuccess({
+        enrolledAt: data.enrolledAt || new Date().toISOString(),
+        similarity: Number(data.similarity || 0),
+        livenessScore: Number(data.livenessScore || motionScore),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "AWS verification failed");
+      setBusy(false);
+      setStatus(null);
+    }
   };
 
-  if (error && !streamRef.current && !starting) {
+  if (mode === "loading") {
     return (
-      <div className="space-y-3 text-center">
-        <p className="text-destructive text-sm">{error}</p>
-        <Button onClick={() => void startCamera()}>Retry camera</Button>
+      <div className="flex flex-col items-center gap-2 py-10">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <p className="text-muted-foreground text-sm">{status || "Preparing verification…"}</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <div className="relative aspect-[4/3] overflow-hidden rounded-lg border bg-black">
-        <video
-          ref={videoRef}
-          className="h-full w-full object-cover [-webkit-transform:scaleX(-1)] [transform:scaleX(-1)]"
-          playsInline
-          muted
+      {mode === "aws-liveness" && sessionId && !busy ? (
+        <AwsFaceLivenessCapture
+          sessionId={sessionId}
+          onComplete={(id) => void verifyWithSession(id)}
+          onError={(message) => {
+            setError(message);
+            setMode("motion");
+            setSessionId(null);
+          }}
         />
-        {(starting || busy) && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/50 px-4 text-center text-white">
-            <Loader2 className="h-8 w-8 animate-spin" />
-            <p className="text-sm">{status || "Starting camera…"}</p>
-          </div>
-        )}
-      </div>
-      <canvas ref={canvasRef} className="hidden" />
+      ) : null}
 
-      {error && streamRef.current && (
-        <p className="text-destructive text-center text-sm">{error}</p>
+      {mode === "motion" && !busy ? (
+        <>
+          <p className="text-muted-foreground text-center text-sm">
+            Record a short live clip. Static photos and phone screens are rejected.
+          </p>
+          <MotionLivenessCapture
+            disabled={disabled}
+            onVerified={(result) => void verifyWithMotion(result.blob, result.motionScore)}
+          />
+        </>
+      ) : null}
+
+      {busy && (
+        <div className="flex flex-col items-center gap-2 py-6">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <p className="text-sm">{status}</p>
+        </div>
       )}
 
-      <div className="flex flex-col gap-2">
-        <Button onClick={() => void captureAndVerify()} disabled={disabled || busy || starting} size="lg">
-          {busy ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Camera className="mr-2 h-4 w-4" />
-          )}
-          {busy ? "Verifying with AWS…" : "Capture & verify with AWS"}
+      {error && <p className="text-destructive text-center text-sm">{error}</p>}
+
+      {onStop && (
+        <Button type="button" variant="outline" onClick={onStop} disabled={busy}>
+          Cancel
         </Button>
-        <Button type="button" variant="outline" onClick={handleStop} disabled={busy}>
-          Stop camera
-        </Button>
-      </div>
+      )}
     </div>
   );
 }

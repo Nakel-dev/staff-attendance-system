@@ -4,6 +4,7 @@ import {
   isAwsRekognitionConfigured,
   verifyAwsRekognitionAccess,
 } from "@/lib/aws/rekognition";
+import { isAwsFaceLivenessConfigured } from "@/lib/aws/face-liveness";
 
 /** Admin: verify AWS Rekognition env + IAM in this deployment. */
 export async function GET() {
@@ -28,6 +29,7 @@ export async function GET() {
 
   return NextResponse.json({
     configured,
+    livenessConfigured: isAwsFaceLivenessConfigured(),
     ok: verification?.ok ?? false,
     region: verification?.region,
     similarityThreshold: verification?.similarityThreshold,

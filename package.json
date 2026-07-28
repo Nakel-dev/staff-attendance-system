@@ -24,6 +24,8 @@
     "desktop:softcopy": "powershell -ExecutionPolicy Bypass -File scripts/package-softcopy.ps1"
   },
   "dependencies": {
+    "@aws-amplify/ui-react": "^6.15.5",
+    "@aws-amplify/ui-react-liveness": "^3.6.8",
     "@aws-sdk/client-rekognition": "^3.1096.0",
     "@radix-ui/react-alert-dialog": "^1.1.16",
     "@radix-ui/react-avatar": "^1.1.12",
@@ -41,6 +43,7 @@
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.2",
     "@vladmandic/face-api": "^1.7.15",
+    "aws-amplify": "^6.19.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
