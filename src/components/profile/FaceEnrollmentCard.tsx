@@ -59,10 +59,21 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
   }, [refreshStatus]);
 
   useEffect(() => {
-    if (promptEnrollment && !loading && !enrolled && hasPhoto && provider !== "didit") {
-      setShowCapture(true);
+    if (promptEnrollment && !loading && !enrolled && hasPhoto) {
+      if (provider === "didit") {
+        // Keep Didit button visible; scroll into view
+        document.getElementById("face-enrollment")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        setShowCapture(true);
+      }
     }
   }, [promptEnrollment, loading, enrolled, hasPhoto, provider]);
+
+  useEffect(() => {
+    if (promptEnrollment && !loading && !hasPhoto) {
+      document.getElementById("profile-photo")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [promptEnrollment, loading, hasPhoto]);
 
   const pollDidit = useCallback(async (id: string) => {
     setPhase("waiting");
@@ -243,6 +254,7 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
 
   return (
     <Card
+      id="face-enrollment"
       className={
         promptEnrollment && !enrolled ? "border-primary ring-1 ring-primary/30" : undefined
       }
@@ -266,7 +278,7 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
           <Alert>
             <AlertTitle>Profile photo required</AlertTitle>
             <AlertDescription>
-              Upload a clear face photo above first. Face match uses that photo as the reference.
+              Take or upload a clear face photo above first, then continue face verification here.
             </AlertDescription>
           </Alert>
         )}

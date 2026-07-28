@@ -2,6 +2,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPasswordResetAppUrl } from "@/lib/config/app-url";
+import { allocateEmployeeCode } from "@/lib/staff/employee-code";
 import { revalidatePath } from "next/cache";
 
 function slugify(name: string) {
@@ -163,16 +164,24 @@ export async function registerStaffMember(data: {
       return { error: toUserFacingAuthError(authError, "Registration failed. Please try again.") };
     }
 
-    const { error: profileError } = await admin.from("profiles").insert({
-      user_id: authUser.user.id,
-      organization_id: org.id,
-      full_name: fullName,
-      email,
-      department: data.department,
-      role: "staff",
-      is_active: true,
-      date_joined: new Date().toISOString().slice(0, 10),
-    });
+    let profileError: { message: string } | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const employeeCode = await allocateEmployeeCode(org.id, org.name);
+      const inserted = await admin.from("profiles").insert({
+        user_id: authUser.user.id,
+        organization_id: org.id,
+        full_name: fullName,
+        email,
+        department: data.department,
+        role: "staff",
+        is_active: true,
+        date_joined: new Date().toISOString().slice(0, 10),
+        employee_code: employeeCode,
+      });
+      profileError = inserted.error;
+      if (!profileError) break;
+      if (!/duplicate|unique/i.test(profileError.message)) break;
+    }
 
     if (profileError) {
       await admin.auth.admin.deleteUser(authUser.user.id);

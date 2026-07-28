@@ -65,7 +65,9 @@ export async function toggleKioskDevice(kioskId: string, isActive: boolean) {
   const profile = await getAuthenticatedProfile(user.id);
   if (!profile || profile.role !== "admin") return { error: "Forbidden" };
 
-  const { error } = await supabase
+  // Service role: authenticated role cannot UPDATE kiosks (revoked in migration 009)
+  const admin = createAdminClient();
+  const { error } = await admin
     .from("kiosks")
     .update({ is_active: isActive })
     .eq("id", kioskId)

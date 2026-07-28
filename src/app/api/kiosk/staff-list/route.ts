@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getKioskSessionFromCookies } from "@/lib/kiosk/session";
+import { backfillMissingEmployeeCodes } from "@/lib/staff/employee-code";
 
 export async function GET() {
   const session = await getKioskSessionFromCookies();
   if (!session) {
     return NextResponse.json({ error: "Invalid kiosk session" }, { status: 401 });
   }
+
+  await backfillMissingEmployeeCodes(session.organizationId);
 
   const admin = createAdminClient();
   const { data, error } = await admin

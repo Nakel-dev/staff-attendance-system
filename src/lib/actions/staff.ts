@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { hashKioskPin, isValidKioskPin } from "@/lib/kiosk/pin";
+import { allocateEmployeeCode } from "@/lib/staff/employee-code";
 import type { Role } from "@/lib/types";
 
 function generatePassword(length = 12) {
@@ -79,19 +80,35 @@ export async function createStaffMember(data: {
 
     if (authError) return { error: authError.message };
 
-    const { error: profileError } = await adminClient.from("profiles").insert({
-      user_id: authUser.user.id,
-      organization_id: auth.adminProfile.organization_id,
-      full_name: data.full_name.trim(),
-      email: data.email.trim().toLowerCase(),
-      phone: data.phone || null,
-      department: data.department,
-      role: data.role,
-      date_joined: data.date_joined,
-      employee_code: data.employee_code?.trim() || null,
-      kiosk_pin_hash: data.kiosk_pin ? hashKioskPin(data.kiosk_pin) : null,
-      is_active: true,
-    });
+    const { data: org } = await adminClient
+      .from("organizations")
+      .select("name")
+      .eq("id", auth.adminProfile.organization_id)
+      .maybeSingle();
+
+    let profileError: { message: string } | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const employeeCode =
+        data.employee_code?.trim() ||
+        (await allocateEmployeeCode(auth.adminProfile.organization_id, org?.name));
+
+      const inserted = await adminClient.from("profiles").insert({
+        user_id: authUser.user.id,
+        organization_id: auth.adminProfile.organization_id,
+        full_name: data.full_name.trim(),
+        email: data.email.trim().toLowerCase(),
+        phone: data.phone || null,
+        department: data.department,
+        role: data.role,
+        date_joined: data.date_joined,
+        employee_code: employeeCode,
+        kiosk_pin_hash: data.kiosk_pin ? hashKioskPin(data.kiosk_pin) : null,
+        is_active: true,
+      });
+      profileError = inserted.error;
+      if (!profileError) break;
+      if (data.employee_code?.trim() || !/duplicate|unique/i.test(profileError.message)) break;
+    }
 
     if (profileError) {
       await adminClient.auth.admin.deleteUser(authUser.user.id);

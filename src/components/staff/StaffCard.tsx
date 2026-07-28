@@ -22,6 +22,11 @@ export function StaffCard({ profile, avatarDisplayUrl }: StaffCardProps) {
         </Avatar>
         <div className="flex-1 min-w-0">
           <CardTitle className="text-xl truncate">{profile.full_name}</CardTitle>
+          {profile.employee_code && (
+            <p className="text-muted-foreground mt-1 font-mono text-sm tracking-wide">
+              {profile.employee_code}
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-2 mt-2">
             <Badge variant={profile.role === "admin" ? "default" : "secondary"}>
               <Shield className="mr-1 h-3 w-3" />

@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export default async function ProfilePage({
   searchParams,
 }: {
-  searchParams: Promise<{ enroll?: string }>;
+  searchParams: { enroll?: string };
 }) {
   const supabase = await createClient();
   const {
@@ -27,8 +27,7 @@ export default async function ProfilePage({
   const profile = await getAuthenticatedProfile(user.id);
   if (!profile) redirect(`${AUTH_PATH}?error=profile-not-found`);
 
-  const params = await searchParams;
-  const promptEnrollment = params.enroll === "1";
+  const promptEnrollment = searchParams?.enroll === "1";
   const avatarDisplayUrl = await getSignedProfilePhotoUrl(profile.avatar_url);
 
   const now = new Date();
@@ -68,15 +67,25 @@ export default async function ProfilePage({
       <div>
         <h2 className="text-2xl font-bold tracking-tight">My Profile</h2>
         <p className="text-muted-foreground">
-          Upload your profile photo and verify your identity with Didit for reception kiosk matching.
-          Clock in/out is only at the office kiosk.
+          {promptEnrollment
+            ? "Step 1: take or upload your photo. Step 2: complete face verification below."
+            : "Upload your profile photo and complete face verification for reception kiosk matching. Clock in/out is only at the office kiosk."}
         </p>
+        {profile.employee_code && (
+          <p className="mt-1 text-sm font-medium">
+            Staff ID: <span className="font-mono tracking-wide">{profile.employee_code}</span>
+          </p>
+        )}
       </div>
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <StaffCard profile={profile} avatarDisplayUrl={avatarDisplayUrl} />
         {isAdmin && <StaffForm profile={profile} />}
       </div>
-      <ProfilePhotoCard profile={profile} avatarDisplayUrl={avatarDisplayUrl} />
+      <ProfilePhotoCard
+        profile={profile}
+        avatarDisplayUrl={avatarDisplayUrl}
+        promptCapture={promptEnrollment && !profile.avatar_url}
+      />
       <FaceEnrollmentCard promptEnrollment={promptEnrollment} />
       <MfaSettingsCard />
       <StaffProfileView

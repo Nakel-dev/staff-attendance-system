@@ -214,12 +214,12 @@ export function StaffForm({ profile, onSuccess }: StaffFormProps) {
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="employee_code">Employee ID (optional)</Label>
+          <Label htmlFor="employee_code">Employee ID (auto if blank)</Label>
           <Input
             id="employee_code"
             value={form.employee_code}
             onChange={(e) => updateField("employee_code", e.target.value)}
-            placeholder="EMP-0042"
+            placeholder="e.g. GREENW-0001"
           />
         </div>
         <div className="space-y-2">
