@@ -7,28 +7,28 @@ from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, Twips
 from docx.enum.style import WD_STYLE_TYPE
 
-# --- Fill these when student provides details ---
-STUDENT_NAME = "[YOUR FULL NAME]"
-MATRIC_NO = "[YOUR MATRICULATION NUMBER]"
-DEPARTMENT = "[YOUR DEPARTMENT, e.g. COMPUTER SCIENCE]"
-SCHOOL = "[YOUR SCHOOL, e.g. SCHOOL OF APPLIED SCIENCES]"
-POLYTECHNIC = "[NAME OF YOUR POLYTECHNIC]"
-PROGRAMME = "HIGHER NATIONAL DIPLOMA (HND) IN COMPUTER SCIENCE"
-SUPERVISOR = "[SUPERVISOR'S FULL NAME]"
-HOD = "[HEAD OF DEPARTMENT'S NAME]"
+# --- Student details (from result slip + student answers) ---
+STUDENT_NAME = "MAKANJUOLA AKINLEKAN OLADELE"
+MATRIC_NO = "TEMP/MCET/003"
+DEPARTMENT = "COMPUTER SCIENCE"
+SCHOOL = "MCET STUDY CENTRE"
+POLYTECHNIC = "IGBAJO POLYTECHNIC, IGBAJO, OSUN STATE"
+PROGRAMME = "NATIONAL DIPLOMA (ND) IN COMPUTER SCIENCE"
+SUPERVISOR = "ALAYANDE, KAYODE GABRIEL"
+HOD = ""  # skipped by student
 SESSION = "JULY, 2026"
-CASE_STUDY = "[NAME OF ORGANISATION / CASE STUDY]"
-DEDICATION_FAMILY = "[YOUR PARENTS / FAMILY NAMES]"
-FRIENDS = "[NAMES OF FRIENDS / CLASSMATES]"
+CASE_STUDY = ""  # optional — omitted from title page when empty
+DEDICATION_FAMILY = "my beloved parents and family"
+FRIENDS = "my classmates and friends"
 
 TOPIC = (
     "DESIGN AND IMPLEMENTATION OF A COMPUTERISED STAFF ATTENDANCE "
     "SYSTEM USING PIN AND PHOTO VERIFICATION"
 )
 
-OUTPUT = r"C:\Users\Dell\Downloads\COMPUTERISED_STAFF_ATTENDANCE_PIN_PHOTO_VERIFICATION.docx"
+OUTPUT = r"C:\Users\Dell\Downloads\MAKANJUOLA_AKINLEKAN_STAFF_ATTENDANCE_PROJECT.docx"
 OUTPUT2 = (
-    r"C:\Users\Dell\Projects\staff-attendance-system\docs\COMPUTERISED_STAFF_ATTENDANCE_PIN_PHOTO_VERIFICATION.docx"
+    r"C:\Users\Dell\Projects\staff-attendance-system\docs\MAKANJUOLA_AKINLEKAN_STAFF_ATTENDANCE_PROJECT.docx"
 )
 
 
@@ -101,7 +101,8 @@ def title_page(doc):
     for _ in range(2):
         add_para(doc, "", first_line=False)
     add_heading_center(doc, TOPIC, size=14)
-    add_para(doc, f"(A CASE STUDY OF {CASE_STUDY})", align="center", bold=True, first_line=False)
+    if CASE_STUDY:
+        add_para(doc, f"(A CASE STUDY OF {CASE_STUDY})", align="center", bold=True, first_line=False)
     add_para(doc, "", first_line=False)
     add_para(doc, "BY", align="center", bold=True, first_line=False)
     add_para(doc, "", first_line=False)
@@ -146,11 +147,12 @@ def certification(doc):
     add_para(doc, SUPERVISOR, bold=True, align="left", first_line=False)
     add_para(doc, "(Project Supervisor)", align="left", first_line=False)
     add_para(doc, "Date: ____________________", align="left", first_line=False)
-    add_para(doc, "", first_line=False)
-    add_para(doc, "______________________________", align="left", first_line=False)
-    add_para(doc, HOD, bold=True, align="left", first_line=False)
-    add_para(doc, "(Head of Department)", align="left", first_line=False)
-    add_para(doc, "Date: ____________________", align="left", first_line=False)
+    if HOD:
+        add_para(doc, "", first_line=False)
+        add_para(doc, "______________________________", align="left", first_line=False)
+        add_para(doc, HOD, bold=True, align="left", first_line=False)
+        add_para(doc, "(Head of Department)", align="left", first_line=False)
+        add_para(doc, "Date: ____________________", align="left", first_line=False)
     add_para(doc, "", first_line=False)
     add_para(doc, "______________________________", align="left", first_line=False)
     add_para(doc, "External Examiner", bold=True, align="left", first_line=False)
@@ -194,13 +196,21 @@ def acknowledgement(doc):
         "I give all glory to Almighty God for the wisdom, strength, and grace to complete "
         "this project successfully.",
     )
-    add_para(
-        doc,
-        f"My sincere gratitude goes to my supervisor, {SUPERVISOR}, for the guidance, "
-        f"corrections, and patience that shaped this work. I also appreciate the Head of "
-        f"Department, {HOD}, and all the lecturers in the Department of {DEPARTMENT} for "
-        f"the knowledge they imparted to me.",
-    )
+    if HOD:
+        add_para(
+            doc,
+            f"My sincere gratitude goes to my supervisor, {SUPERVISOR}, for the guidance, "
+            f"corrections, and patience that shaped this work. I also appreciate the Head of "
+            f"Department, {HOD}, and all the lecturers in the Department of {DEPARTMENT} for "
+            f"the knowledge they imparted to me.",
+        )
+    else:
+        add_para(
+            doc,
+            f"My sincere gratitude goes to my supervisor, {SUPERVISOR}, for the guidance, "
+            f"corrections, and patience that shaped this work. I also appreciate all the "
+            f"lecturers in the Department of {DEPARTMENT} for the knowledge they imparted to me.",
+        )
     add_para(
         doc,
         f"I am deeply thankful to my parents and family for their financial and moral "
@@ -444,7 +454,7 @@ def chapter_one(doc):
         "Leave request and approval management.",
         "Attendance history and reporting with export.",
         "Multi-organisation support with role-based access.",
-        f"Implementation context: {CASE_STUDY} (or a similar organisational setting).",
+        "Suitable for schools, companies and similar organisations.",
     ]:
         add_para(doc, s, align="left", first_line=False)
 
