@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     if (!profile.avatar_url) {
       return NextResponse.json(
-        { error: "Upload a profile photo first, then verify with AWS." },
+        { error: "Capture a camera photo first, then verify with AWS." },
         { status: 422 }
       );
     }

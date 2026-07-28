@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, ScanFace } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, ScanFace } from "lucide-react";
 import { toast } from "sonner";
 import { updateAttendanceSecuritySettings } from "@/lib/actions/organization";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Select,
   SelectContent,
@@ -38,13 +39,19 @@ interface BiometricProviderCardProps {
 
 /**
  * Standalone admin control for which face engine staff/kiosk use.
- * Kept separate so it is easy to find (not buried under other toggles).
+ * Default deployment: AWS Rekognition (see BIOMETRIC_SETUP.md).
  */
 export function BiometricProviderCard({ organization }: BiometricProviderCardProps) {
   const [provider, setProvider] = useState<BiometricProvider>(
-    normalizeBiometricProvider(organization.biometric_provider)
+    normalizeBiometricProvider(organization.biometric_provider || "aws")
   );
   const [availability, setAvailability] = useState({ local: true, didit: false, aws: false });
+  const [awsStatus, setAwsStatus] = useState<{
+    ok?: boolean;
+    configured?: boolean;
+    message?: string;
+    region?: string;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -58,6 +65,13 @@ export function BiometricProviderCard({ organization }: BiometricProviderCardPro
         });
       })
       .catch(() => undefined);
+
+    void fetch("/api/admin/aws/status")
+      .then((r) => r.json())
+      .then((d: { ok?: boolean; message?: string; region?: string; configured?: boolean }) => {
+        setAwsStatus(d);
+      })
+      .catch(() => undefined);
   }, []);
 
   const handleSave = async () => {
@@ -66,7 +80,9 @@ export function BiometricProviderCard({ organization }: BiometricProviderCardPro
       return;
     }
     if (provider === "aws" && !availability.aws) {
-      toast.error("AWS is not configured (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION).");
+      toast.error(
+        "AWS is not configured. Add AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION to Vercel — see BIOMETRIC_SETUP.md."
+      );
       return;
     }
 
@@ -100,11 +116,32 @@ export function BiometricProviderCard({ organization }: BiometricProviderCardPro
           Face verification method (clock-in)
         </CardTitle>
         <CardDescription>
-          Choose how staff prove their face for identity setup and kiosk clock-in/out. No ID/KYC —
-          face + liveness only.
+          Production default: <strong>AWS Rekognition</strong>. Staff camera photo at signup is
+          compared at every clock-in. One-time AWS setup: see <code>BIOMETRIC_SETUP.md</code>.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {awsStatus?.configured && awsStatus.ok && (
+          <Alert>
+            <CheckCircle2 className="h-4 w-4" />
+            <AlertTitle>AWS Rekognition connected</AlertTitle>
+            <AlertDescription>
+              Region {awsStatus.region}. {awsStatus.message}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {(!awsStatus?.configured || awsStatus?.ok === false) && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>AWS not ready on this server</AlertTitle>
+            <AlertDescription>
+              {awsStatus?.message ||
+                "Add AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_REGION to Vercel, redeploy, then run migration 015 in Supabase."}
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className="space-y-2">
           <Label htmlFor="biometric-provider">Provider</Label>
           <Select
@@ -128,13 +165,13 @@ export function BiometricProviderCard({ organization }: BiometricProviderCardPro
 
         <ul className="text-muted-foreground list-disc space-y-1 pl-5 text-sm">
           <li>
-            <strong>Local</strong>: free, works offline-friendly on device
+            <strong>AWS</strong> (recommended): signup photo + live face at kiosk (~$0.001/compare)
           </li>
           <li>
-            <strong>AWS</strong>: cheap pay-as-you-go cloud face match (needs AWS keys on Vercel)
+            <strong>Local</strong>: free on-device only — no cloud match
           </li>
           <li>
-            <strong>Didit</strong>: cloud liveness + match (needs Didit keys / plan)
+            <strong>Didit</strong>: optional third-party liveness
           </li>
         </ul>
 

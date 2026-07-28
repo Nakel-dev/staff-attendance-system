@@ -88,6 +88,7 @@ export async function registerOrganization(data: {
         require_face_match: true,
         require_geofence: true,
         require_qr_code: false,
+        biometric_provider: "aws",
       })
       .select("id, invite_code")
       .single();

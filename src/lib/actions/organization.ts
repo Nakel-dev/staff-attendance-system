@@ -125,7 +125,7 @@ export async function getOrganizationSettings() {
         .eq("id", auth.profile.organization_id)
         .single();
       org = fallback.data
-        ? { ...fallback.data, biometric_provider: "local" }
+        ? { ...fallback.data, biometric_provider: "aws" }
         : null;
       error = fallback.error;
     }
@@ -134,7 +134,7 @@ export async function getOrganizationSettings() {
     return {
       organization: {
         ...org,
-        biometric_provider: org.biometric_provider || "local",
+        biometric_provider: org.biometric_provider || "aws",
       },
     };
   } catch (err) {

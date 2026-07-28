@@ -10,5 +10,5 @@ export const BIOMETRIC_PROVIDER_LABELS: Record<BiometricProvider, string> = {
 
 export function normalizeBiometricProvider(value: unknown): BiometricProvider {
   if (value === "didit" || value === "aws" || value === "local") return value;
-  return "local";
+  return "aws";
 }
