@@ -132,7 +132,7 @@ export async function getPhoneChallengePublic(token: string) {
     .eq("id", challenge.kiosk_id)
     .single();
 
-  let provider = normalizeBiometricProvider(org?.biometric_provider);
+  const provider = normalizeBiometricProvider(org?.biometric_provider);
   const awsOk = isAwsRekognitionConfigured();
   const diditOk = isDiditConfigured();
 
@@ -246,7 +246,7 @@ export async function completePhoneClockChallenge(input: {
     .eq("id", challenge.organization_id)
     .single();
 
-  let provider = normalizeBiometricProvider(org?.biometric_provider);
+  const provider = normalizeBiometricProvider(org?.biometric_provider);
   if (provider === "aws" && !isAwsRekognitionConfigured()) {
     await failChallenge(challenge.id, "AWS not configured on server");
     return {

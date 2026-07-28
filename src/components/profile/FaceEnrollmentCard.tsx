@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { clearFaceEnrollment, getFaceEnrollmentStatus } from "@/lib/actions/face";
 import { createClient } from "@/lib/supabase/client";
+import { AwsFaceEnrollmentCapture } from "@/components/face/AwsFaceEnrollmentCapture";
 import {
   FaceRegistrationCapture,
   type FaceRegistrationCaptureResult,
@@ -153,7 +154,16 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
     }
   };
 
-  const handleLocalOrAwsComplete = async (capture: FaceRegistrationCaptureResult) => {
+  const handleAwsEnrollmentSuccess = (result: { enrolledAt: string; similarity: number }) => {
+    setEnrolled(true);
+    setEnrolledAt(result.enrolledAt);
+    setShowCapture(false);
+    setProcessing(false);
+    toast.success(`AWS face match passed (${result.similarity.toFixed(0)}% similar)`);
+    if (promptEnrollment) window.location.href = "/my-attendance";
+  };
+
+  const handleLocalComplete = async (capture: FaceRegistrationCaptureResult) => {
     setProcessing(true);
     try {
       const supabase = createClient();
@@ -173,23 +183,6 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
           });
         if (uploadError) throw new Error(uploadError.message);
         referenceClipUrl = path;
-      }
-
-      if (provider === "aws") {
-        if (!capture.snapshotJpeg) {
-          throw new Error("Could not capture a live face frame for AWS matching.");
-        }
-        const form = new FormData();
-        form.append("file", capture.snapshotJpeg, "live.jpg");
-        const res = await fetch("/api/staff/aws/verify", { method: "POST", body: form });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "AWS verification failed");
-        setEnrolled(true);
-        setEnrolledAt(data.enrolledAt || new Date().toISOString());
-        setShowCapture(false);
-        toast.success(`AWS face match passed (${Number(data.similarity || 0).toFixed(0)}% similar)`);
-        if (promptEnrollment) window.location.href = "/my-attendance";
-        return;
       }
 
       const res = await fetch("/api/staff/register-face", {
@@ -257,7 +250,7 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
     provider === "didit"
       ? "Required at signup: verify your live face matches your camera photo. Daily clock-in matches this enrollment."
       : provider === "aws"
-        ? "Required at signup: guided liveness, then AWS matches your live face to your camera photo."
+        ? "Required at signup: capture one live selfie. AWS Rekognition compares it to your profile photo."
         : "Required at signup: register face angles here. Daily clock-in matches this enrollment at the kiosk.";
 
   return (
@@ -377,10 +370,18 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
               </Button>
             )}
 
-            {providerReady && (showCapture || (enrolled && showCapture)) && (
+            {providerReady && showCapture && provider === "aws" && (
+              <AwsFaceEnrollmentCapture
+                disabled={processing}
+                onStop={() => setShowCapture(false)}
+                onSuccess={handleAwsEnrollmentSuccess}
+              />
+            )}
+
+            {providerReady && showCapture && provider === "local" && (
               <FaceRegistrationCapture
                 disabled={processing}
-                onComplete={(result) => void handleLocalOrAwsComplete(result)}
+                onComplete={(result) => void handleLocalComplete(result)}
               />
             )}
 
