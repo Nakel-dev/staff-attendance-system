@@ -54,6 +54,7 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
   const [processing, setProcessing] = useState(false);
   const [resultMessage, setResultMessage] = useState("");
   const [diditEnabled, setDiditEnabled] = useState(false);
+  const [providerMode, setProviderMode] = useState<"local" | "didit" | "aws">("local");
   const [diditSessionId, setDiditSessionId] = useState<string | null>(null);
   const [faceStatus, setFaceStatus] = useState("Waiting for face verification…");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -71,10 +72,20 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
   }, [query, staff]);
 
   useEffect(() => {
-    void fetch("/api/kiosk/didit/config")
+    void fetch("/api/kiosk/biometric-config")
       .then((r) => r.json())
-      .then((d: { configured?: boolean }) => setDiditEnabled(!!d.configured))
-      .catch(() => setDiditEnabled(false));
+      .then((d: { provider?: string; diditConfigured?: boolean }) => {
+        const provider =
+          d.provider === "didit" || d.provider === "aws" || d.provider === "local"
+            ? d.provider
+            : "local";
+        setProviderMode(provider);
+        setDiditEnabled(provider === "didit" && !!d.diditConfigured);
+      })
+      .catch(() => {
+        setProviderMode("local");
+        setDiditEnabled(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -284,7 +295,11 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
           <h1 className="text-2xl font-bold">Reception Kiosk</h1>
           <p className="text-muted-foreground text-sm">{deviceName}</p>
           <p className="text-muted-foreground text-xs">
-            {diditEnabled ? "Mode: PIN + Didit face verification" : "Mode: PIN + photo (Didit not configured)"}
+            {providerMode === "didit" && diditEnabled
+              ? "Mode: PIN + Didit face verification"
+              : providerMode === "aws"
+                ? "Mode: PIN + AWS face match"
+                : "Mode: PIN + photo (local)"}
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm">

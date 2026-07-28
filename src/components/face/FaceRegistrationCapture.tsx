@@ -21,6 +21,8 @@ export interface FaceRegistrationCaptureResult {
   frameDescriptors: number[][];
   motionScore: number;
   referenceClipBlob?: Blob;
+  /** Last live frame as JPEG — used for AWS CompareFaces */
+  snapshotJpeg?: Blob;
 }
 
 interface FaceRegistrationCaptureProps {
@@ -123,12 +125,29 @@ export function FaceRegistrationCapture({ onComplete, disabled }: FaceRegistrati
           return;
         }
 
+        let snapshotJpeg: Blob | undefined;
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            snapshotJpeg = await new Promise<Blob | undefined>((resolve) => {
+              canvas.toBlob((b) => resolve(b || undefined), "image/jpeg", 0.92);
+            });
+          }
+        } catch {
+          snapshotJpeg = undefined;
+        }
+
         stopCamera();
         setTimeout(() => {
           onComplete({
             angles: nextCaptured,
             frameDescriptors,
             motionScore: liveness.motionScore,
+            snapshotJpeg,
           });
         }, 0);
         return;

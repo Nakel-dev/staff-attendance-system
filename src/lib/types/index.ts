@@ -1,4 +1,5 @@
 export type AttendanceMode = "trust" | "standard" | "strict" | "admin_only";
+export type BiometricProvider = "local" | "didit" | "aws";
 export type CheckInMethod = "self" | "admin" | "qr" | "kiosk";
 export type Role = "admin" | "staff";
 export type AttendanceStatus = "present" | "absent" | "late" | "half-day";
@@ -24,6 +25,7 @@ export interface Organization {
   require_face_match?: boolean;
   require_geofence?: boolean;
   require_qr_code?: boolean;
+  biometric_provider?: BiometricProvider;
   checkin_token?: string | null;
   checkin_token_expires_at?: string | null;
   created_at: string;

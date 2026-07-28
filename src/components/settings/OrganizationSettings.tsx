@@ -27,6 +27,7 @@ interface OrganizationSettingsProps {
     require_face_match?: boolean | null;
     require_geofence?: boolean | null;
     require_qr_code?: boolean | null;
+    biometric_provider?: string | null;
   };
   kiosks?: {
     id: string;

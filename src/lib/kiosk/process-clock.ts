@@ -4,6 +4,11 @@ import {
   getDiditSessionDecision,
   isDiditConfigured,
 } from "@/lib/didit/client";
+import {
+  compareStoredPhotosAws,
+  isAwsRekognitionConfigured,
+} from "@/lib/aws/rekognition";
+import { normalizeBiometricProvider } from "@/lib/biometrics/providers";
 import type { KioskSessionContext } from "@/lib/kiosk/session";
 
 export type ClockAttemptType = "check_in" | "check_out";
@@ -162,7 +167,7 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
 
   const { data: org } = await admin
     .from("organizations")
-    .select("clock_attempt_cooldown_seconds")
+    .select("clock_attempt_cooldown_seconds, biometric_provider")
     .eq("id", input.session.organizationId)
     .single();
 
@@ -195,8 +200,12 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
   }
 
   const diditEnabled = isDiditConfigured();
+  const awsEnabled = isAwsRekognitionConfigured();
+  const provider = normalizeBiometricProvider(org?.biometric_provider);
+  const useDidit = provider === "didit" && diditEnabled;
+  const useAws = provider === "aws" && awsEnabled;
 
-  if (diditEnabled) {
+  if (useDidit) {
     if (!staff.avatar_url) {
       return enqueueReview(input, "photo_review", staff);
     }
@@ -248,6 +257,7 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
         diditSessionId: input.diditSessionId,
         faceMatchScore: decision.faceMatchScore,
         livenessScore: decision.livenessScore,
+        provider: "didit",
       });
 
       return {
@@ -287,7 +297,81 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
     };
   }
 
-  // Fallback when Didit is not configured: PIN + local photo (manual review path)
+  if (useAws) {
+    if (!staff.avatar_url) {
+      return enqueueReview(input, "photo_review", staff);
+    }
+    if (!input.photoCaptureUrl?.trim()) {
+      return enqueueReview(input, "missing_photo", staff);
+    }
+
+    try {
+      const comparison = await compareStoredPhotosAws({
+        sourceAvatarPath: staff.avatar_url,
+        targetCapturePath: input.photoCaptureUrl,
+      });
+
+      if (!comparison.matched) {
+        return enqueueReview(input, "no_match", staff, {
+          provider: "aws",
+          similarity: comparison.similarity,
+        });
+      }
+
+      const { data: record, error } = await admin
+        .from("attendance_records")
+        .insert({
+          organization_id: input.session.organizationId,
+          staff_id: input.staffId,
+          type: input.attemptType,
+          match_status: "auto_matched",
+          liveness_passed: true,
+          confidence_score: comparison.similarity,
+          photo_capture_url: input.photoCaptureUrl,
+          kiosk_device_id: input.session.kioskId,
+        })
+        .select("id, server_timestamp")
+        .single();
+
+      if (error) {
+        if (error.message.includes("duplicate_")) {
+          return enqueueReview(input, "duplicate_day", staff, { dbError: error.message });
+        }
+        throw new Error(error.message);
+      }
+
+      await logAttempt(input, "success", {
+        recordId: record.id,
+        provider: "aws",
+        similarity: comparison.similarity,
+      });
+
+      return {
+        success: true,
+        status: "clocked",
+        message:
+          input.attemptType === "check_in"
+            ? "AWS face match passed. Checked in successfully."
+            : "AWS face match passed. Checked out successfully.",
+        recordId: record.id,
+      };
+    } catch (err) {
+      await logAttempt(input, "no_match", {
+        provider: "aws",
+        error: err instanceof Error ? err.message : "aws_compare_failed",
+      });
+      return {
+        success: false,
+        status: "rejected",
+        message:
+          err instanceof Error
+            ? err.message
+            : "AWS face verification failed. Try again or contact admin.",
+      };
+    }
+  }
+
+  // Local / fallback: PIN + local photo
   if (!input.photoCaptureUrl?.trim()) {
     return enqueueReview(input, "missing_photo", staff);
   }
@@ -317,7 +401,7 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
     throw new Error(error.message);
   }
 
-  await logAttempt(input, "success", { recordId: record.id });
+  await logAttempt(input, "success", { recordId: record.id, provider: "local" });
 
   return {
     success: true,

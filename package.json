@@ -23,6 +23,7 @@
     "desktop:softcopy": "powershell -ExecutionPolicy Bypass -File scripts/package-softcopy.ps1"
   },
   "dependencies": {
+    "@aws-sdk/client-rekognition": "^3.1096.0",
     "@radix-ui/react-alert-dialog": "^1.1.16",
     "@radix-ui/react-avatar": "^1.1.12",
     "@radix-ui/react-checkbox": "^1.3.4",

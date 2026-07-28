@@ -111,7 +111,7 @@ export async function getOrganizationSettings() {
     const { data: org, error } = await admin
       .from("organizations")
       .select(
-        "id, name, invite_code, slug, created_at, attendance_mode, office_latitude, office_longitude, geofence_radius_m, require_video_verification, require_face_match, require_geofence, require_qr_code"
+        "id, name, invite_code, slug, created_at, attendance_mode, office_latitude, office_longitude, geofence_radius_m, require_video_verification, require_face_match, require_geofence, require_qr_code, biometric_provider"
       )
       .eq("id", auth.profile.organization_id)
       .single();
@@ -132,6 +132,7 @@ export async function updateAttendanceSecuritySettings(input: {
   requireFaceMatch: boolean;
   requireGeofence: boolean;
   requireQrCode: boolean;
+  biometricProvider: "local" | "didit" | "aws";
 }) {
   try {
     const auth = await requireOrgAdmin();
@@ -148,6 +149,10 @@ export async function updateAttendanceSecuritySettings(input: {
       return { error: "Office location is required when geofence verification is enabled" };
     }
 
+    if (!["local", "didit", "aws"].includes(input.biometricProvider)) {
+      return { error: "Invalid biometric provider" };
+    }
+
     const admin = createAdminClient();
     const { error } = await admin
       .from("organizations")
@@ -160,6 +165,7 @@ export async function updateAttendanceSecuritySettings(input: {
         require_face_match: input.requireFaceMatch,
         require_geofence: input.requireGeofence,
         require_qr_code: input.requireQrCode,
+        biometric_provider: input.biometricProvider,
         updated_at: new Date().toISOString(),
       })
       .eq("id", auth.profile.organization_id);
@@ -169,6 +175,7 @@ export async function updateAttendanceSecuritySettings(input: {
     revalidatePath("/settings");
     revalidatePath("/my-attendance");
     revalidatePath("/attendance");
+    revalidatePath("/profile");
     return { success: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Failed to update security settings" };
