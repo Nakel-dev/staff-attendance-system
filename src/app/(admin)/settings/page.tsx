@@ -14,7 +14,7 @@ export default async function SettingsPage() {
   if (!user) redirect(AUTH_PATH);
 
   const profile = await getAuthenticatedProfile(user.id);
-  if (!profile || profile.role !== "admin") redirect(`${AUTH_PATH}?error=staff-kiosk-only`);
+  if (!profile || profile.role !== "admin") redirect("/my-attendance");
 
   const settings = await getOrganizationSettings();
   if ("error" in settings) redirect("/dashboard");

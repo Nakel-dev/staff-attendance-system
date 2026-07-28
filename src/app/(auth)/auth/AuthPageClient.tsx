@@ -41,12 +41,6 @@ export default function AuthPageClient() {
       setAuthError("Your account has been deactivated. Contact your organization admin.");
       toast.error("Account deactivated");
     }
-    if (error === "staff-kiosk-only") {
-      setAuthError(
-        "Staff do not sign in on the web. Use the reception kiosk (/kiosk) to clock in and out."
-      );
-      toast.message("Staff use the reception kiosk only");
-    }
     if (error === "reset-link-invalid") {
       setAuthError("That password reset link is invalid or expired. Request a new reset email.");
       toast.error("Reset link invalid or expired");
@@ -62,8 +56,8 @@ export default function AuthPageClient() {
               showForgot
                 ? "Reset your password"
                 : mode === "signin"
-                  ? "Admin sign-in for your organization"
-                  : "Register your organization or join a staff roster"
+                  ? "Sign in to your organization account"
+                  : "Register your organization or join as staff"
             }
           />
         </CardHeader>

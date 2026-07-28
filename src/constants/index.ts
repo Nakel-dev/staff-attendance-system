@@ -52,7 +52,7 @@ export const APP_TAGLINE = "Staff attendance for any organization";
 export const AUTH_PATH = "/auth";
 
 export function getHomePath(role: "admin" | "staff") {
-  return role === "admin" ? "/dashboard" : "/kiosk";
+  return role === "admin" ? "/dashboard" : "/my-attendance";
 }
 /** @deprecated Use APP_NAME */
 export const SYSTEM_NAME = APP_NAME;

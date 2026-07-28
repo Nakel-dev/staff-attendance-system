@@ -31,7 +31,7 @@ export default async function AdminLayout({
 
   if (!profile) redirect(`${AUTH_PATH}?error=profile-not-found`);
 
-  if (profile.role !== "admin") redirect(`${AUTH_PATH}?error=staff-kiosk-only`);
+  if (profile.role !== "admin") redirect("/my-attendance");
 
   const profileWithOrg = await getProfileWithOrganization(user.id);
   const organizationName = getOrganizationDisplayName(profileWithOrg);

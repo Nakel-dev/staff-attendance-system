@@ -27,10 +27,8 @@ type SuccessState = {
   title: string;
   message: string;
   inviteCode?: string;
-  redirectTo?: string;
+  redirectTo: string;
   buttonLabel: string;
-  /** Staff: registered for kiosk only — do not web sign-in */
-  kioskOnly?: boolean;
 };
 
 async function completeSignIn(
@@ -89,7 +87,7 @@ export function SignUpPanel({ tab, onTabChange, onSwitchToSignIn }: SignUpPanelP
       }
       setSuccess({
         title: "Organization created",
-        message: `${orgForm.organizationName.trim()} is ready. Add staff in the dashboard (name, PIN, photo), then set up a reception kiosk. You can also share the invite code so staff can join the roster.`,
+        message: `${orgForm.organizationName.trim()} is ready. Share the invite code so staff can join, upload a profile photo, and enroll their face. Clock in/out stays at the reception kiosk.`,
         inviteCode: result.inviteCode,
         redirectTo: "/dashboard?welcome=1",
         buttonLabel: "Go to Admin Dashboard",
@@ -125,12 +123,12 @@ export function SignUpPanel({ tab, onTabChange, onSwitchToSignIn }: SignUpPanelP
         return;
       }
       setSuccess({
-        title: "You're on the staff list",
-        message: `You joined ${result.organizationName}. Staff do not use web login — ask your admin to set your 4-digit PIN and profile photo, then clock in/out at the reception kiosk.`,
-        buttonLabel: "Back to sign in",
-        kioskOnly: true,
+        title: "Welcome aboard",
+        message: `You joined ${result.organizationName}. Next: upload your profile photo and enroll your face. Clock in and out only at the office reception kiosk.`,
+        redirectTo: "/profile?enroll=1",
+        buttonLabel: "Set up photo & face",
       });
-      toast.success(`Joined ${result.organizationName}. Use the reception kiosk to clock in.`);
+      toast.success(`Welcome to ${result.organizationName}!`);
     } finally {
       setLoading(false);
     }
@@ -138,12 +136,6 @@ export function SignUpPanel({ tab, onTabChange, onSwitchToSignIn }: SignUpPanelP
 
   const handleContinue = async () => {
     if (!success) return;
-    if (success.kioskOnly) {
-      onSwitchToSignIn();
-      setSuccess(null);
-      return;
-    }
-    if (!success.redirectTo) return;
     setLoading(true);
     setError("");
     const email = tab === "organization" ? orgForm.email : staffForm.email;
@@ -288,7 +280,7 @@ export function SignUpPanel({ tab, onTabChange, onSwitchToSignIn }: SignUpPanelP
               Create Organization
             </Button>
             <p className="text-xs text-muted-foreground text-center">
-              You become the admin. Add staff with PIN and photo, then set up a reception kiosk.
+              You become the admin. Share the invite code so staff can join and set up their photo.
             </p>
           </form>
         </TabsContent>
@@ -375,8 +367,8 @@ export function SignUpPanel({ tab, onTabChange, onSwitchToSignIn }: SignUpPanelP
               Join Organization
             </Button>
             <p className="text-xs text-muted-foreground text-center">
-              This adds you to the staff roster only. You will not get a web dashboard — clock in at
-              the reception kiosk after your admin sets your PIN and photo.
+              After joining, sign in to upload your photo and enroll your face. Daily clock in/out is
+              only at the reception kiosk.
             </p>
           </form>
         </TabsContent>

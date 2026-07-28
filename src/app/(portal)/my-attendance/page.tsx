@@ -50,7 +50,10 @@ export default async function MyAttendancePage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold tracking-tight">My Attendance</h2>
-        <p className="text-muted-foreground">View kiosk attendance and register your face for check-in</p>
+        <p className="text-muted-foreground">
+          View kiosk attendance history. Upload photo and enroll face under Profile — clock in/out is
+          only at the reception kiosk.
+        </p>
       </div>
       <StaffPortalQuickLinks />
       <MyAttendanceView

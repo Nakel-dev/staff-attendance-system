@@ -108,9 +108,8 @@ export function OrganizationSettings({ organization, kiosks = [] }: Organization
           <CardHeader>
             <CardTitle>Staff Invite Code</CardTitle>
             <CardDescription>
-              Optional: staff can join the roster via Sign Up → Join as Staff. They do not get web
-              login — clock in/out is only at the reception kiosk. Prefer adding staff with PIN and
-              photo under Staff Management.
+              Share this code so staff can join via Sign Up → Join as Staff, then set up their
+              profile photo and face enrollment. Clock in/out is only at the reception kiosk.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

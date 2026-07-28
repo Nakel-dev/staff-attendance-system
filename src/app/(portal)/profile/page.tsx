@@ -6,13 +6,18 @@ import { StaffCard } from "@/components/staff/StaffCard";
 import { StaffForm } from "@/components/staff/StaffForm";
 import { StaffProfileView } from "@/components/staff/StaffProfileView";
 import { ProfilePhotoCard } from "@/components/profile/ProfilePhotoCard";
+import { FaceEnrollmentCard } from "@/components/profile/FaceEnrollmentCard";
 import { MfaSettingsCard } from "@/components/profile/MfaSettingsCard";
 import { getAuthenticatedProfile } from "@/lib/supabase/profile";
 import { getSignedProfilePhotoUrl } from "@/lib/storage/photos";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProfilePage() {
+export default async function ProfilePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ enroll?: string }>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -22,6 +27,8 @@ export default async function ProfilePage() {
   const profile = await getAuthenticatedProfile(user.id);
   if (!profile) redirect(`${AUTH_PATH}?error=profile-not-found`);
 
+  const params = await searchParams;
+  const promptEnrollment = params.enroll === "1";
   const avatarDisplayUrl = await getSignedProfilePhotoUrl(profile.avatar_url);
 
   const now = new Date();
@@ -61,7 +68,8 @@ export default async function ProfilePage() {
       <div>
         <h2 className="text-2xl font-bold tracking-tight">My Profile</h2>
         <p className="text-muted-foreground">
-          Upload your profile photo for the reception kiosk and manage your account
+          Upload your profile photo and enroll your face for reception kiosk verification. Clock
+          in/out is only at the office kiosk.
         </p>
       </div>
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -69,6 +77,7 @@ export default async function ProfilePage() {
         {isAdmin && <StaffForm profile={profile} />}
       </div>
       <ProfilePhotoCard profile={profile} avatarDisplayUrl={avatarDisplayUrl} />
+      <FaceEnrollmentCard promptEnrollment={promptEnrollment} />
       <MfaSettingsCard />
       <StaffProfileView
         staffId={profile.id}

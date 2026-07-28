@@ -234,15 +234,6 @@ export async function signInUser(email: string, password: string) {
       return { error: "Your account has been deactivated." };
     }
 
-    // Staff clock in/out at reception kiosk only — no web portal login
-    if (profile.role === "staff") {
-      await supabase.auth.signOut();
-      return {
-        error:
-          "Staff accounts cannot sign in here. Use the reception kiosk to clock in and out.",
-      };
-    }
-
     return { success: true, role: profile.role as "admin" | "staff" };
   } catch (err) {
     console.error("[signInUser]", err);

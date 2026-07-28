@@ -51,7 +51,7 @@ export function SignInForm({ onSwitchToSignUp, onForgotPassword }: SignInFormPro
         setError(message);
         return;
       }
-      window.location.href = "/dashboard";
+      window.location.href = result.role === "admin" ? "/dashboard" : "/my-attendance";
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
@@ -126,13 +126,13 @@ export function SignInForm({ onSwitchToSignUp, onForgotPassword }: SignInFormPro
         </Button>
       </form>
       <p className="text-center text-sm text-muted-foreground mt-6">
-        Staff clock in at the reception kiosk — not here.{" "}
+        New here?{" "}
         <button
           type="button"
           onClick={onSwitchToSignUp}
           className="text-primary font-medium hover:underline"
         >
-          Register an organization
+          Create an account
         </button>
       </p>
     </>

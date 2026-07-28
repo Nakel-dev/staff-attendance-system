@@ -3,6 +3,16 @@ import { AUTH_PATH } from "@/constants";
 import { rateLimit } from "@/lib/security/rate-limit";
 import { createServerClient } from "@supabase/ssr";
 
+const ADMIN_ROUTES = [
+  "/dashboard",
+  "/staff",
+  "/attendance",
+  "/leaves",
+  "/reports",
+  "/settings",
+  "/review-queue",
+];
+
 const STAFF_ROUTES = ["/my-attendance"];
 const SHARED_ROUTES = ["/profile", "/my-leaves"];
 const PUBLIC_ROUTES = ["/", AUTH_PATH, "/login", "/register", "/terms", "/privacy", "/kiosk"];
@@ -115,19 +125,9 @@ export async function updateSession(request: NextRequest) {
       .eq("user_id", user.id)
       .single();
 
-    if (profile?.role === "staff") {
-      await supabase.auth.signOut();
+    if (profile?.role) {
       const url = request.nextUrl.clone();
-      url.pathname = AUTH_PATH;
-      url.searchParams.set("error", "staff-kiosk-only");
-      const redirect = NextResponse.redirect(url);
-      redirect.headers.set("x-request-id", requestId);
-      return redirect;
-    }
-
-    if (profile?.role === "admin") {
-      const url = request.nextUrl.clone();
-      url.pathname = "/dashboard";
+      url.pathname = profile.role === "admin" ? "/dashboard" : "/my-attendance";
       const redirect = NextResponse.redirect(url);
       redirect.headers.set("x-request-id", requestId);
       return redirect;
@@ -164,19 +164,16 @@ export async function updateSession(request: NextRequest) {
 
     const role = profile.role;
 
-    // Staff never use the web portal — kiosk only
-    if (role === "staff") {
-      await supabase.auth.signOut();
+    if (SHARED_ROUTES.some((r) => pathname.startsWith(r))) {
+      return supabaseResponse;
+    }
+
+    if (role === "staff" && ADMIN_ROUTES.some((r) => pathname.startsWith(r))) {
       const url = request.nextUrl.clone();
-      url.pathname = AUTH_PATH;
-      url.searchParams.set("error", "staff-kiosk-only");
+      url.pathname = "/my-attendance";
       const redirect = NextResponse.redirect(url);
       redirect.headers.set("x-request-id", requestId);
       return redirect;
-    }
-
-    if (SHARED_ROUTES.some((r) => pathname.startsWith(r))) {
-      return supabaseResponse;
     }
 
     if (role === "admin" && STAFF_ROUTES.some((r) => pathname.startsWith(r))) {
@@ -198,13 +195,7 @@ export async function updateSession(request: NextRequest) {
         .select("role")
         .eq("user_id", user.id)
         .single();
-      if (profile?.role === "staff") {
-        await supabase.auth.signOut();
-        url.pathname = AUTH_PATH;
-        url.searchParams.set("error", "staff-kiosk-only");
-      } else {
-        url.pathname = "/dashboard";
-      }
+      url.pathname = profile?.role === "admin" ? "/dashboard" : "/my-attendance";
     }
     const redirect = NextResponse.redirect(url);
     redirect.headers.set("x-request-id", requestId);

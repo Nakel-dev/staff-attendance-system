@@ -29,9 +29,9 @@ export function InviteCodeCard({ inviteCode, organizationName }: InviteCodeCardP
           Invite Staff to {organizationName}
         </CardTitle>
         <CardDescription>
-          Prefer adding staff in Staff Management (PIN + photo). Or share this code so they can join
-          the roster at <span className="font-medium">/auth</span> → Sign Up → Join as Staff. Staff
-          clock in only at the reception kiosk.
+          Share this code so staff can join at <span className="font-medium">/auth</span> → Sign Up →
+          Join as Staff, then upload photo and enroll face. Daily clock in/out stays at the reception
+          kiosk.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col sm:flex-row sm:items-center gap-3">
