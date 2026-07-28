@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AttendanceSecuritySettings } from "@/components/settings/AttendanceSecuritySettings";
+import { BiometricProviderCard } from "@/components/settings/BiometricProviderCard";
 import { KioskManagement } from "@/components/settings/KioskManagement";
 import { LEAVE_BALANCE } from "@/constants";
 
