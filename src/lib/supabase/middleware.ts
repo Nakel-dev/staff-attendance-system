@@ -125,10 +125,19 @@ export async function updateSession(request: NextRequest) {
       .eq("user_id", user.id)
       .single();
 
-    if (profile?.role) {
+    if (profile?.role === "staff") {
+      await supabase.auth.signOut();
       const url = request.nextUrl.clone();
-      url.pathname =
-        profile.role === "admin" ? "/dashboard" : "/my-attendance";
+      url.pathname = AUTH_PATH;
+      url.searchParams.set("error", "staff-kiosk-only");
+      const redirect = NextResponse.redirect(url);
+      redirect.headers.set("x-request-id", requestId);
+      return redirect;
+    }
+
+    if (profile?.role === "admin") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/dashboard";
       const redirect = NextResponse.redirect(url);
       redirect.headers.set("x-request-id", requestId);
       return redirect;
@@ -165,16 +174,19 @@ export async function updateSession(request: NextRequest) {
 
     const role = profile.role;
 
-    if (SHARED_ROUTES.some((r) => pathname.startsWith(r))) {
-      return supabaseResponse;
-    }
-
-    if (role === "staff" && ADMIN_ROUTES.some((r) => pathname.startsWith(r))) {
+    // Staff never use the web portal — kiosk only
+    if (role === "staff") {
+      await supabase.auth.signOut();
       const url = request.nextUrl.clone();
-      url.pathname = "/my-attendance";
+      url.pathname = AUTH_PATH;
+      url.searchParams.set("error", "staff-kiosk-only");
       const redirect = NextResponse.redirect(url);
       redirect.headers.set("x-request-id", requestId);
       return redirect;
+    }
+
+    if (SHARED_ROUTES.some((r) => pathname.startsWith(r))) {
+      return supabaseResponse;
     }
 
     if (role === "admin" && STAFF_ROUTES.some((r) => pathname.startsWith(r))) {
@@ -196,8 +208,13 @@ export async function updateSession(request: NextRequest) {
         .select("role")
         .eq("user_id", user.id)
         .single();
-      url.pathname =
-        profile?.role === "admin" ? "/dashboard" : "/my-attendance";
+      if (profile?.role === "staff") {
+        await supabase.auth.signOut();
+        url.pathname = AUTH_PATH;
+        url.searchParams.set("error", "staff-kiosk-only");
+      } else {
+        url.pathname = "/dashboard";
+      }
     }
     const redirect = NextResponse.redirect(url);
     redirect.headers.set("x-request-id", requestId);
