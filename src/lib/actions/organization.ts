@@ -186,7 +186,7 @@ export async function updateAttendanceSecuritySettings(input: {
       updated_at: new Date().toISOString(),
     };
 
-    let { error } = await admin
+    const { error } = await admin
       .from("organizations")
       .update(payload)
       .eq("id", auth.profile.organization_id);
