@@ -3,16 +3,6 @@ import { AUTH_PATH } from "@/constants";
 import { rateLimit } from "@/lib/security/rate-limit";
 import { createServerClient } from "@supabase/ssr";
 
-const ADMIN_ROUTES = [
-  "/dashboard",
-  "/staff",
-  "/attendance",
-  "/leaves",
-  "/reports",
-  "/settings",
-  "/review-queue",
-];
-
 const STAFF_ROUTES = ["/my-attendance"];
 const SHARED_ROUTES = ["/profile", "/my-leaves"];
 const PUBLIC_ROUTES = ["/", AUTH_PATH, "/login", "/register", "/terms", "/privacy", "/kiosk"];
