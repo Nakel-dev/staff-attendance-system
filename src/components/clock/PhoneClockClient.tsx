@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AwsPhoneClockCapture } from "@/components/clock/AwsPhoneClockCapture";
+import { fetchWithTimeout } from "@/lib/utils/fetch-with-timeout";
 import {
   LiveFaceVerifyCapture,
   type LiveFaceVerifyResult,
@@ -166,7 +167,11 @@ export function PhoneClockClient({ token }: { token: string }) {
       if (payload.photoBytes) form.append("file", payload.photoBytes, "selfie.jpg");
       if (payload.motionScore != null) form.append("motionScore", String(payload.motionScore));
       if (payload.livenessSessionId) form.append("livenessSessionId", payload.livenessSessionId);
-      const res = await fetch(`/api/clock/${token}/complete`, { method: "POST", body: form });
+      const res = await fetchWithTimeout(`/api/clock/${token}/complete`, {
+        method: "POST",
+        body: form,
+        timeoutMs: 90000,
+      });
       const data = (await res.json()) as { success?: boolean; message?: string; error?: string };
       if (data.success) {
         setDoneMessage(data.message || "Clocked successfully");
@@ -175,8 +180,8 @@ export function PhoneClockClient({ token }: { token: string }) {
         toast.error(data.message || data.error || "Could not clock");
         setError(data.message || data.error || "Could not clock");
       }
-    } catch {
-      toast.error("Network error");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Network error");
     } finally {
       setSubmitting(false);
     }

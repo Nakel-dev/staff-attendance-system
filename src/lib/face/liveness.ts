@@ -1,6 +1,81 @@
-export const MIN_LIVENESS_FRAMES = 8;
+export const MIN_LIVENESS_FRAMES = 5;
 export const MIN_MOTION_SCORE = 0.035;
 export const MAX_FRAME_DESCRIPTOR_DISTANCE = 0.45;
+export const MIN_LANDMARK_PIXEL_MOTION = 1.4;
+export const MAX_LANDMARK_FRAME_DISTANCE = 42;
+
+export function landmarkDistance(a: number[], b: number[]): number {
+  if (a.length !== b.length || a.length === 0) return Number.POSITIVE_INFINITY;
+  let total = 0;
+  let points = 0;
+  for (let i = 0; i < a.length; i += 2) {
+    const dx = a[i] - b[i];
+    const dy = a[i + 1] - b[i + 1];
+    total += Math.sqrt(dx * dx + dy * dy);
+    points += 1;
+  }
+  return points > 0 ? total / points : Number.POSITIVE_INFINITY;
+}
+
+export function computeLandmarkMotionScore(landmarkFrames: number[][]): number {
+  if (landmarkFrames.length < 2) return 0;
+  let total = 0;
+  let pairs = 0;
+  for (let i = 1; i < landmarkFrames.length; i++) {
+    total += landmarkDistance(landmarkFrames[i - 1], landmarkFrames[i]);
+    pairs += 1;
+  }
+  return pairs > 0 ? total / pairs : 0;
+}
+
+/** Map average landmark movement (224px canvas) to 0–1 for server checks. */
+export function normalizeLandmarkMotionScore(avgPixelMotion: number): number {
+  return Math.min(1, avgPixelMotion / 40);
+}
+
+export function validateLivenessLandmarkFrames(
+  landmarkFrames: number[][],
+  options?: { minFrames?: number; minPixelMotion?: number }
+): {
+  passed: boolean;
+  motionScore: number;
+  reason?: string;
+} {
+  const minFrames = options?.minFrames ?? MIN_LIVENESS_FRAMES;
+  const minPixelMotion = options?.minPixelMotion ?? MIN_LANDMARK_PIXEL_MOTION;
+
+  if (landmarkFrames.length < minFrames) {
+    return {
+      passed: false,
+      motionScore: 0,
+      reason: `Need at least ${minFrames} live frames — keep your face centered and move your head slowly.`,
+    };
+  }
+
+  const pixelMotion = computeLandmarkMotionScore(landmarkFrames);
+  const motionScore = normalizeLandmarkMotionScore(pixelMotion);
+  if (pixelMotion < minPixelMotion) {
+    return {
+      passed: false,
+      motionScore,
+      reason: "Live video required — static photos and phone screens are not accepted.",
+    };
+  }
+
+  const first = landmarkFrames[0];
+  const allSamePerson = landmarkFrames.every(
+    (frame) => landmarkDistance(first, frame) <= MAX_LANDMARK_FRAME_DISTANCE
+  );
+  if (!allSamePerson) {
+    return {
+      passed: false,
+      motionScore,
+      reason: "Face changed during recording — please record again.",
+    };
+  }
+
+  return { passed: true, motionScore };
+}
 
 export function descriptorDistance(a: number[], b: number[]): number {
   if (a.length !== b.length) return Number.POSITIVE_INFINITY;

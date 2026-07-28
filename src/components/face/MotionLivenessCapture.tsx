@@ -3,32 +3,34 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { loadFaceModels } from "@/lib/face/client";
 import {
-  MIN_LIVENESS_FRAMES,
-  MIN_MOTION_SCORE,
-  pickBestDescriptor,
-  validateLivenessFrames,
-} from "@/lib/face/liveness";
+  captureLivenessLandmarkFrame,
+  freezeVideoFrame,
+  loadRegistrationDetector,
+} from "@/lib/face/client";
+import { validateLivenessLandmarkFrames } from "@/lib/face/liveness";
 
 export type MotionLivenessResult = {
   blob: Blob;
   motionScore: number;
 };
 
-async function captureFrameDescriptor(
-  video: HTMLVideoElement,
-  faceapi: typeof import("@vladmandic/face-api")
-) {
-  const detection = await faceapi
-    .detectSingleFace(video)
-    .withFaceLandmarks()
-    .withFaceDescriptor();
-  if (!detection) return null;
-  return Array.from(detection.descriptor);
+const RECORD_MS = 3000;
+const SAMPLE_MS = 380;
+
+function yieldToBrowser(ms = 16): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Short live video clip with head movement — rejects static photos. */
+function waitForVideoFrame(video: HTMLVideoElement): Promise<void> {
+  if (video.readyState >= 2) return Promise.resolve();
+  return new Promise((resolve) => {
+    video.requestVideoFrameCallback?.(() => resolve());
+    setTimeout(resolve, 120);
+  });
+}
+
+/** Fast live clip check using tiny face detector only — no heavy models or webm replay. */
 export function MotionLivenessCapture({
   onVerified,
   disabled,
@@ -40,8 +42,7 @@ export function MotionLivenessCapture({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const modelsReadyRef = useRef(false);
 
   const [cameraReady, setCameraReady] = useState(false);
   const [starting, setStarting] = useState(true);
@@ -65,7 +66,7 @@ export function MotionLivenessCapture({
     stopCamera();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false,
       });
       streamRef.current = stream;
@@ -73,6 +74,7 @@ export function MotionLivenessCapture({
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
+        await waitForVideoFrame(videoRef.current);
       }
     } catch {
       setError("Could not access camera. Allow camera permission and try again.");
@@ -85,82 +87,80 @@ export function MotionLivenessCapture({
     void startCamera();
   }, [startCamera]);
 
-  const finishRecording = async (videoBlob: Blob) => {
+  useEffect(() => {
+    if (!cameraReady || modelsReadyRef.current) return;
+    void loadRegistrationDetector()
+      .then(() => {
+        modelsReadyRef.current = true;
+      })
+      .catch(() => undefined);
+  }, [cameraReady]);
+
+  const startRecording = async () => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || disabled || recording || processing) return;
 
-    setProcessing(true);
-    setProgress("Checking live motion…");
+    setRecording(true);
+    setError(null);
+    setProgress("Preparing live check…");
+
     try {
-      await loadFaceModels();
-      const faceapi = await import("@vladmandic/face-api");
-      const frameDescriptors: number[][] = [];
-      const tempVideo = document.createElement("video");
-      tempVideo.src = URL.createObjectURL(videoBlob);
-      tempVideo.muted = true;
-      await tempVideo.play();
+      await loadRegistrationDetector();
+      modelsReadyRef.current = true;
+    } catch {
+      setRecording(false);
+      setProgress("");
+      setError("Could not load face detection. Check your connection and try again.");
+      return;
+    }
 
-      const durationMs = Math.min(tempVideo.duration * 1000 || 3000, 4000);
-      const intervalMs = Math.max(120, Math.floor(durationMs / MIN_LIVENESS_FRAMES));
-      for (let t = 0; t < durationMs; t += intervalMs) {
-        tempVideo.currentTime = t / 1000;
-        await new Promise((r) => setTimeout(r, 80));
-        const descriptor = await captureFrameDescriptor(tempVideo, faceapi);
-        if (descriptor) frameDescriptors.push(descriptor);
+    const landmarkFrames: number[][] = [];
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < RECORD_MS) {
+      if (!videoRef.current) break;
+      await waitForVideoFrame(videoRef.current);
+      const frame = await captureLivenessLandmarkFrame(videoRef.current);
+      if (frame) landmarkFrames.push(frame);
+
+      const pct = Math.min(100, Math.round(((Date.now() - startedAt) / RECORD_MS) * 100));
+      setProgress(`Recording… ${pct}% — move your head slowly`);
+
+      await yieldToBrowser(8);
+      const elapsed = Date.now() - startedAt;
+      const waitMs = SAMPLE_MS - (elapsed % SAMPLE_MS);
+      if (waitMs > 0 && elapsed + waitMs < RECORD_MS) {
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
       }
-      URL.revokeObjectURL(tempVideo.src);
+    }
 
-      const liveness = validateLivenessFrames(frameDescriptors);
+    setRecording(false);
+    setProcessing(true);
+    setProgress("Checking motion…");
+    await yieldToBrowser(16);
+
+    try {
+      const liveness = validateLivenessLandmarkFrames(landmarkFrames);
       if (!liveness.passed) {
         throw new Error(liveness.reason || "Live video required — static photos are not accepted.");
       }
 
-      pickBestDescriptor(frameDescriptors);
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Could not capture photo");
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
+      const canvas = freezeVideoFrame(video, 720);
       const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.9)
+        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.88)
       );
       if (!blob) throw new Error("Could not capture photo");
 
       stopCamera();
-      onVerified({ blob, motionScore: liveness.motionScore });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Liveness check failed");
       setProcessing(false);
       setProgress("");
+      onVerified({ blob, motionScore: liveness.motionScore });
+    } catch (err) {
+      setProcessing(false);
+      setProgress("");
+      setError(err instanceof Error ? err.message : "Liveness check failed");
       void startCamera();
     }
-  };
-
-  const startRecording = () => {
-    const stream = streamRef.current;
-    if (!stream || disabled || recording || processing) return;
-
-    chunksRef.current = [];
-    const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
-    recorderRef.current = recorder;
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) chunksRef.current.push(event.data);
-    };
-    recorder.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: "video/webm" });
-      void finishRecording(blob);
-    };
-
-    setRecording(true);
-    setError(null);
-    setProgress("Recording… move your head slowly");
-    recorder.start();
-    setTimeout(() => {
-      if (recorderRef.current?.state === "recording") recorderRef.current.stop();
-      setRecording(false);
-    }, 3000);
   };
 
   return (
@@ -186,7 +186,7 @@ export function MotionLivenessCapture({
       <Button
         className="w-full"
         size="lg"
-        onClick={startRecording}
+        onClick={() => void startRecording()}
         disabled={disabled || !cameraReady || starting || recording || processing}
       >
         <Video className="mr-2 h-4 w-4" />
@@ -196,4 +196,4 @@ export function MotionLivenessCapture({
   );
 }
 
-export { MIN_MOTION_SCORE };
+export { MIN_MOTION_SCORE } from "@/lib/face/liveness";

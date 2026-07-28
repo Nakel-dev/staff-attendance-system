@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AwsFaceLivenessCapture } from "@/components/face/AwsFaceLivenessCapture";
 import { MotionLivenessCapture } from "@/components/face/MotionLivenessCapture";
+import { fetchWithTimeout } from "@/lib/utils/fetch-with-timeout";
 
 export type AwsFaceEnrollmentResult = {
   enrolledAt: string;
@@ -35,7 +36,10 @@ export function AwsFaceEnrollmentCapture({
   const startSession = useCallback(async () => {
     setError(null);
     setStatus("Starting AWS Face Liveness…");
-    const res = await fetch("/api/staff/aws/liveness/session", { method: "POST" });
+    const res = await fetchWithTimeout("/api/staff/aws/liveness/session", {
+      method: "POST",
+      timeoutMs: 20000,
+    });
     const data = (await res.json()) as { sessionId?: string; error?: string };
     if (!res.ok || !data.sessionId) {
       throw new Error(data.error || "Could not start AWS Face Liveness");
@@ -68,7 +72,11 @@ export function AwsFaceEnrollmentCapture({
     try {
       const form = new FormData();
       form.append("sessionId", id);
-      const res = await fetch("/api/staff/aws/verify", { method: "POST", body: form });
+      const res = await fetchWithTimeout("/api/staff/aws/verify", {
+        method: "POST",
+        body: form,
+        timeoutMs: 90000,
+      });
       const data = (await res.json()) as {
         error?: string;
         enrolledAt?: string;
@@ -96,7 +104,11 @@ export function AwsFaceEnrollmentCapture({
       const form = new FormData();
       form.append("file", blob, "live.jpg");
       form.append("motionScore", String(motionScore));
-      const res = await fetch("/api/staff/aws/verify", { method: "POST", body: form });
+      const res = await fetchWithTimeout("/api/staff/aws/verify", {
+        method: "POST",
+        body: form,
+        timeoutMs: 90000,
+      });
       const data = (await res.json()) as {
         error?: string;
         enrolledAt?: string;

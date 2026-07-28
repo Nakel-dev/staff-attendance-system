@@ -84,6 +84,17 @@ export async function loadFaceRegistrationModels() {
   return loadRegistrationRecognitionModel();
 }
 
+export async function captureLivenessLandmarkFrame(
+  video: HTMLVideoElement
+): Promise<number[] | null> {
+  const faceapi = await loadRegistrationDetector();
+  const canvas = freezeVideoFrame(video, 224);
+  const options = new faceapi.TinyFaceDetectorOptions(DESCRIPTOR_OPTIONS);
+  const detection = await faceapi.detectSingleFace(canvas, options).withFaceLandmarks(true);
+  if (!detection?.landmarks) return null;
+  return detection.landmarks.positions.flatMap((point) => [point.x, point.y]);
+}
+
 export function freezeVideoFrame(video: HTMLVideoElement, maxDim = 280): HTMLCanvasElement {
   const w = video.videoWidth;
   const h = video.videoHeight;
