@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
-import { Loader2, LogIn, LogOut, ScanFace, Search, Wifi, WifiOff } from "lucide-react";
+import { Loader2, LogIn, LogOut, QrCode, Search, Wifi, WifiOff } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,7 @@ interface KioskClockAppProps {
   deviceName: string;
 }
 
-type Step = "pick" | "pin" | "face" | "photo" | "done";
+type Step = "pick" | "pin" | "qr" | "photo" | "done";
 
 async function submitClock(payload: {
   staffId: string;
@@ -53,12 +54,13 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
   const [online, setOnline] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [resultMessage, setResultMessage] = useState("");
-  const [diditEnabled, setDiditEnabled] = useState(false);
   const [providerMode, setProviderMode] = useState<"local" | "didit" | "aws">("local");
-  const [diditSessionId, setDiditSessionId] = useState<string | null>(null);
-  const [faceStatus, setFaceStatus] = useState("Waiting for face verification…");
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const [qrToken, setQrToken] = useState<string | null>(null);
+  const [qrSecondsLeft, setQrSecondsLeft] = useState(60);
+  const [qrStatus, setQrStatus] = useState("Waiting for phone…");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const popupRef = useRef<Window | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -74,18 +76,14 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
   useEffect(() => {
     void fetch("/api/kiosk/biometric-config")
       .then((r) => r.json())
-      .then((d: { provider?: string; diditConfigured?: boolean }) => {
+      .then((d: { provider?: string }) => {
         const provider =
           d.provider === "didit" || d.provider === "aws" || d.provider === "local"
             ? d.provider
             : "local";
         setProviderMode(provider);
-        setDiditEnabled(provider === "didit" && !!d.diditConfigured);
       })
-      .catch(() => {
-        setProviderMode("local");
-        setDiditEnabled(false);
-      });
+      .catch(() => setProviderMode("local"));
   }, []);
 
   useEffect(() => {
@@ -104,10 +102,10 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
-    if (popupRef.current && !popupRef.current.closed) {
-      popupRef.current.close();
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
     }
-    popupRef.current = null;
   }, []);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
@@ -132,17 +130,15 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
   }, [flushQueue]);
 
   const finishClock = useCallback(
-    async (opts: { diditSessionId?: string; photoCaptureUrl?: string }) => {
+    async (opts: { photoCaptureUrl?: string }) => {
       if (!selected || !pin) return;
       setProcessing(true);
-      const payload = {
+      const response = await submitClock({
         staffId: selected.id,
         attemptType,
         pin,
-        diditSessionId: opts.diditSessionId,
         photoCaptureUrl: opts.photoCaptureUrl,
-      };
-      const response = await submitClock(payload);
+      });
       setResultMessage(response.message || response.error || "Attempt recorded");
       setStep("done");
       setProcessing(false);
@@ -153,38 +149,91 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
     [attemptType, pin, selected]
   );
 
-  const pollDidit = useCallback(
-    (sessionId: string) => {
+  const pollQrStatus = useCallback(
+    (token: string) => {
       stopPolling();
-      setFaceStatus("Complete face scan in the Didit window…");
+      setQrStatus("Waiting for phone…");
+      countdownRef.current = setInterval(() => {
+        setQrSecondsLeft((s) => Math.max(0, s - 1));
+      }, 1000);
       pollRef.current = setInterval(async () => {
         try {
-          const res = await fetch(`/api/kiosk/didit/status?sessionId=${sessionId}`);
+          const res = await fetch(`/api/kiosk/phone-challenge/${token}`);
           const data = (await res.json()) as {
-            terminal?: boolean;
             status?: string;
+            message?: string;
             error?: string;
           };
           if (!res.ok) {
-            setFaceStatus(data.error || "Could not read verification status");
+            setQrStatus(data.error || "Could not check status");
             return;
           }
-          setFaceStatus(`Didit status: ${data.status || "…"}`);
-          if (!data.terminal) return;
-          stopPolling();
-          await finishClock({ diditSessionId: sessionId });
+          setQrStatus(data.message || data.status || "…");
+          if (data.status === "completed") {
+            stopPolling();
+            setResultMessage(data.message || "Phone verification complete");
+            setStep("done");
+            toast.success(data.message || "Clocked via phone");
+            return;
+          }
+          if (data.status === "failed" || data.status === "expired") {
+            stopPolling();
+            setQrStatus(data.message || `QR ${data.status}`);
+            toast.error(data.message || `QR ${data.status}`);
+          }
         } catch {
-          setFaceStatus("Network error while checking face verification");
+          setQrStatus("Network error while waiting for phone");
         }
-      }, 2500);
+      }, 2000);
     },
-    [finishClock, stopPolling]
+    [stopPolling]
+  );
+
+  const startPhoneQr = useCallback(
+    async (enteredPin: string) => {
+      if (!selected) return;
+      setProcessing(true);
+      try {
+        const res = await fetch("/api/kiosk/phone-challenge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            staffId: selected.id,
+            attemptType,
+            pin: enteredPin,
+          }),
+        });
+        const data = (await res.json()) as {
+          token?: string;
+          qrUrl?: string;
+          ttlSeconds?: number;
+          error?: string;
+        };
+        setProcessing(false);
+        if (!res.ok || !data.token || !data.qrUrl) {
+          toast.error(data.error || "Could not create phone QR");
+          setStep("pin");
+          return;
+        }
+        setQrToken(data.token);
+        setQrUrl(data.qrUrl);
+        setQrSecondsLeft(data.ttlSeconds || 60);
+        setStep("qr");
+        pollQrStatus(data.token);
+      } catch {
+        setProcessing(false);
+        toast.error("Could not create phone QR");
+        setStep("pin");
+      }
+    },
+    [attemptType, pollQrStatus, selected]
   );
 
   const handleSelectStaff = async (member: (typeof staff)[0]) => {
     setSelected(member);
     setPin("");
-    setDiditSessionId(null);
+    setQrToken(null);
+    setQrUrl(null);
     const res = await fetch(`/api/kiosk/staff-status?staffId=${member.id}`);
     if (res.ok) {
       const data = (await res.json()) as { nextAttempt?: "check_in" | "check_out" };
@@ -199,54 +248,13 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
     setPin(enteredPin);
     if (!selected) return;
 
-    if (!diditEnabled) {
+    if (!navigator.onLine) {
+      toast.message("Offline — use kiosk camera instead");
       setStep("photo");
       return;
     }
 
-    if (!navigator.onLine) {
-      toast.error("Face verification requires internet");
-      return;
-    }
-
-    setProcessing(true);
-    setStep("face");
-    setFaceStatus("Starting Didit face verification…");
-    try {
-      const res = await fetch("/api/kiosk/didit/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          staffId: selected.id,
-          attemptType,
-          pin: enteredPin,
-        }),
-      });
-      const data = (await res.json()) as {
-        sessionId?: string;
-        sessionUrl?: string;
-        error?: string;
-      };
-      setProcessing(false);
-      if (!res.ok || !data.sessionId || !data.sessionUrl) {
-        toast.error(data.error || "Could not start face verification");
-        setStep("pin");
-        return;
-      }
-      setDiditSessionId(data.sessionId);
-      const popup = window.open(data.sessionUrl, "didit_face", "width=480,height=720");
-      popupRef.current = popup;
-      if (!popup) {
-        // Popup blocked — navigate same tab
-        window.location.href = data.sessionUrl;
-        return;
-      }
-      pollDidit(data.sessionId);
-    } catch {
-      setProcessing(false);
-      toast.error("Could not start face verification");
-      setStep("pin");
-    }
+    await startPhoneQr(enteredPin);
   };
 
   const handlePhotoCapture = async (blob: Blob) => {
@@ -281,11 +289,13 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
     stopPolling();
     setSelected(null);
     setPin("");
-    setDiditSessionId(null);
+    setQrToken(null);
+    setQrUrl(null);
     setStep("pick");
     setResultMessage("");
     setQuery("");
-    setFaceStatus("Waiting for face verification…");
+    setQrStatus("Waiting for phone…");
+    setQrSecondsLeft(60);
   };
 
   return (
@@ -295,11 +305,7 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
           <h1 className="text-2xl font-bold">Reception Kiosk</h1>
           <p className="text-muted-foreground text-sm">{deviceName}</p>
           <p className="text-muted-foreground text-xs">
-            {providerMode === "didit" && diditEnabled
-              ? "Mode: PIN + Didit face verification"
-              : providerMode === "aws"
-                ? "Mode: PIN + AWS face match"
-                : "Mode: PIN + photo (local)"}
+            PIN → 60s QR → face on staff phone ({providerMode})
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm">
@@ -363,36 +369,56 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
         </Card>
       )}
 
-      {step === "face" && selected && (
+      {step === "qr" && selected && qrUrl && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <ScanFace className="h-5 w-5" />
-              Face verification — {selected.full_name}
+              <QrCode className="h-5 w-5" />
+              Scan with your phone — {selected.full_name}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-center">
             {processing ? (
               <Loader2 className="mx-auto h-8 w-8 animate-spin" />
             ) : (
-              <ScanFace className="mx-auto h-12 w-12 text-primary" />
+              <div className="mx-auto inline-block rounded-lg bg-white p-4 shadow-sm">
+                <QRCodeSVG value={qrUrl} size={240} level="M" includeMargin />
+              </div>
             )}
-            <p className="text-sm">{faceStatus}</p>
-            <p className="text-muted-foreground text-xs">
-              Look at the camera in the Didit window. Keep this page open until verification finishes.
+            <p className="font-medium">
+              {qrSecondsLeft > 0 ? `${qrSecondsLeft}s left` : "Expired"}
             </p>
-            {diditSessionId && (
+            <p className="text-sm">{qrStatus}</p>
+            <p className="text-muted-foreground text-xs">
+              Staff finishes face verification on their own phone. Keep this screen open.
+            </p>
+            <div className="flex flex-col gap-2">
+              {pin && (
+                <Button
+                  variant="secondary"
+                  onClick={() => void startPhoneQr(pin)}
+                  disabled={processing}
+                >
+                  New QR code
+                </Button>
+              )}
               <Button
                 variant="outline"
-                onClick={() => pollDidit(diditSessionId)}
+                onClick={() => {
+                  stopPolling();
+                  setStep("photo");
+                }}
                 disabled={processing}
               >
-                Recheck status
+                Use kiosk camera instead
               </Button>
-            )}
-            <Button variant="outline" className="w-full" onClick={reset} disabled={processing}>
-              Cancel
-            </Button>
+              <Button variant="outline" onClick={reset} disabled={processing}>
+                Cancel
+              </Button>
+            </div>
+            {qrToken ? (
+              <p className="break-all text-muted-foreground text-[10px]">{qrUrl}</p>
+            ) : null}
           </CardContent>
         </Card>
       )}

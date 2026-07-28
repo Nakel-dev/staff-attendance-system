@@ -17,6 +17,8 @@ const STAFF_ROUTES = ["/my-attendance"];
 const SHARED_ROUTES = ["/profile", "/my-leaves"];
 const PUBLIC_ROUTES = ["/", AUTH_PATH, "/login", "/register", "/terms", "/privacy", "/kiosk"];
 const KIOSK_API_PREFIX = "/api/kiosk";
+const PHONE_CLOCK_PREFIX = "/clock";
+const PHONE_CLOCK_API_PREFIX = "/api/clock";
 const AUTH_SUBROUTES = ["/auth/reset-password", "/auth/callback"];
 const AUTH_RATE_LIMIT_POST_PATHS = [AUTH_PATH, "/auth/reset-password"];
 const AUTH_RATE_LIMIT_EXEMPT = ["/auth/callback"];
@@ -33,7 +35,12 @@ export async function updateSession(request: NextRequest) {
   supabaseResponse.headers.set("x-request-id", requestId);
 
   const pathname = request.nextUrl.pathname;
-  if (pathname.startsWith(KIOSK_API_PREFIX) || pathname.startsWith("/kiosk")) {
+  if (
+    pathname.startsWith(KIOSK_API_PREFIX) ||
+    pathname.startsWith("/kiosk") ||
+    pathname.startsWith(PHONE_CLOCK_API_PREFIX) ||
+    pathname.startsWith(PHONE_CLOCK_PREFIX)
+  ) {
     return supabaseResponse;
   }
 

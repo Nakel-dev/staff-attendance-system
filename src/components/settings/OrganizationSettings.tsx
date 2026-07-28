@@ -84,6 +84,8 @@ export function OrganizationSettings({ organization, kiosks = [] }: Organization
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
+        <BiometricProviderCard organization={organization} />
+
         <Card>
           <CardHeader>
             <CardTitle>General</CardTitle>
@@ -111,7 +113,7 @@ export function OrganizationSettings({ organization, kiosks = [] }: Organization
             <CardTitle>Staff Invite Code</CardTitle>
             <CardDescription>
               Share this code so staff can join via Sign Up → Join as Staff, then upload a profile
-              photo and verify with Didit. Clock in/out is only at the reception kiosk.
+              photo and complete face verification. Clock in/out is at the reception kiosk.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -145,6 +147,7 @@ export function OrganizationSettings({ organization, kiosks = [] }: Organization
             require_face_match: organization.require_face_match,
             require_geofence: organization.require_geofence,
             require_qr_code: organization.require_qr_code,
+            biometric_provider: organization.biometric_provider,
           }}
         />
 
