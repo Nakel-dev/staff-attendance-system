@@ -77,6 +77,47 @@ export function validateLivenessLandmarkFrames(
   return { passed: true, motionScore };
 }
 
+export const MIN_PIXEL_FRAME_DIFF = 4;
+export const MIN_PIXEL_MOTION_FRAMES = 5;
+
+/** Map average grayscale frame diff (0–255) to 0–1 for server checks. */
+export function normalizePixelMotionScore(avgDiff: number): number {
+  return Math.min(1, avgDiff / 25);
+}
+
+/** Validates live camera motion from consecutive video frame diffs — no ML required. */
+export function validatePixelMotionSamples(
+  frameDiffs: number[],
+  options?: { minFrames?: number; minAvgDiff?: number }
+): {
+  passed: boolean;
+  motionScore: number;
+  reason?: string;
+} {
+  const minFrames = options?.minFrames ?? MIN_PIXEL_MOTION_FRAMES;
+  const minAvgDiff = options?.minAvgDiff ?? MIN_PIXEL_FRAME_DIFF;
+
+  if (frameDiffs.length < minFrames) {
+    return {
+      passed: false,
+      motionScore: 0,
+      reason: `Need at least ${minFrames} live frames — keep your face in view and move your head slowly.`,
+    };
+  }
+
+  const avgDiff = frameDiffs.reduce((sum, value) => sum + value, 0) / frameDiffs.length;
+  const motionScore = normalizePixelMotionScore(avgDiff);
+  if (avgDiff < minAvgDiff) {
+    return {
+      passed: false,
+      motionScore,
+      reason: "Live video required — static photos and phone screens are not accepted.",
+    };
+  }
+
+  return { passed: true, motionScore };
+}
+
 export function descriptorDistance(a: number[], b: number[]): number {
   if (a.length !== b.length) return Number.POSITIVE_INFINITY;
   let sum = 0;

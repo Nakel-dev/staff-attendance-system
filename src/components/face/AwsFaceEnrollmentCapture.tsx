@@ -38,7 +38,7 @@ export function AwsFaceEnrollmentCapture({
     setStatus("Starting AWS Face Liveness…");
     const res = await fetchWithTimeout("/api/staff/aws/liveness/session", {
       method: "POST",
-      timeoutMs: 20000,
+      timeoutMs: 8000,
     });
     const data = (await res.json()) as { sessionId?: string; error?: string };
     if (!res.ok || !data.sessionId) {
@@ -52,13 +52,17 @@ export function AwsFaceEnrollmentCapture({
   useEffect(() => {
     void (async () => {
       try {
-        const configRes = await fetch("/api/staff/biometric/config");
+        const configRes = await fetchWithTimeout("/api/staff/biometric/config", { timeoutMs: 8000 });
         const config = (await configRes.json()) as { awsLiveness?: boolean };
         if (config.awsLiveness) {
-          await startSession();
-        } else {
-          setMode("motion");
+          try {
+            await startSession();
+            return;
+          } catch {
+            setError(null);
+          }
         }
+        setMode("motion");
       } catch {
         setMode("motion");
       }

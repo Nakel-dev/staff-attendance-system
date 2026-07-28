@@ -4,11 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  captureLivenessLandmarkFrame,
-  freezeVideoFrame,
-  loadRegistrationDetector,
-} from "@/lib/face/client";
-import { validateLivenessLandmarkFrames } from "@/lib/face/liveness";
+  captureJpegFromVideo,
+  grayscaleFrameDiff,
+  sampleVideoGrayscale,
+} from "@/lib/face/pixel-motion";
+import { validatePixelMotionSamples } from "@/lib/face/liveness";
 
 export type MotionLivenessResult = {
   blob: Blob;
@@ -16,21 +16,20 @@ export type MotionLivenessResult = {
 };
 
 const RECORD_MS = 3000;
-const SAMPLE_MS = 380;
-
-function yieldToBrowser(ms = 16): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+const SAMPLE_MS = 400;
 
 function waitForVideoFrame(video: HTMLVideoElement): Promise<void> {
-  if (video.readyState >= 2) return Promise.resolve();
+  if (video.readyState >= 2 && video.videoWidth > 0) return Promise.resolve();
   return new Promise((resolve) => {
-    video.requestVideoFrameCallback?.(() => resolve());
-    setTimeout(resolve, 120);
+    if (video.requestVideoFrameCallback) {
+      video.requestVideoFrameCallback(() => resolve());
+    }
+    video.addEventListener("loadeddata", () => resolve(), { once: true });
+    setTimeout(resolve, 150);
   });
 }
 
-/** Fast live clip check using tiny face detector only — no heavy models or webm replay. */
+/** Instant live motion check — canvas pixel diffs only, no ML model download. */
 export function MotionLivenessCapture({
   onVerified,
   disabled,
@@ -42,7 +41,7 @@ export function MotionLivenessCapture({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const modelsReadyRef = useRef(false);
+  const recordingRef = useRef(false);
 
   const [cameraReady, setCameraReady] = useState(false);
   const [starting, setStarting] = useState(true);
@@ -87,80 +86,67 @@ export function MotionLivenessCapture({
     void startCamera();
   }, [startCamera]);
 
-  useEffect(() => {
-    if (!cameraReady || modelsReadyRef.current) return;
-    void loadRegistrationDetector()
-      .then(() => {
-        modelsReadyRef.current = true;
-      })
-      .catch(() => undefined);
-  }, [cameraReady]);
-
-  const startRecording = async () => {
+  const startRecording = () => {
     const video = videoRef.current;
-    if (!video || disabled || recording || processing) return;
+    if (!video || disabled || recordingRef.current || recording || processing) return;
 
+    recordingRef.current = true;
     setRecording(true);
     setError(null);
-    setProgress("Preparing live check…");
+    setProgress("Recording… 0% — move your head slowly");
 
-    try {
-      await loadRegistrationDetector();
-      modelsReadyRef.current = true;
-    } catch {
-      setRecording(false);
-      setProgress("");
-      setError("Could not load face detection. Check your connection and try again.");
-      return;
-    }
-
-    const landmarkFrames: number[][] = [];
+    const frameDiffs: number[] = [];
+    let previousGray: Uint8Array | null = null;
     const startedAt = Date.now();
+    let sampleTimer: ReturnType<typeof setInterval> | null = null;
+    let finished = false;
 
-    while (Date.now() - startedAt < RECORD_MS) {
-      if (!videoRef.current) break;
-      await waitForVideoFrame(videoRef.current);
-      const frame = await captureLivenessLandmarkFrame(videoRef.current);
-      if (frame) landmarkFrames.push(frame);
+    const finish = async () => {
+      if (finished) return;
+      finished = true;
+      if (sampleTimer) clearInterval(sampleTimer);
+      recordingRef.current = false;
+      setRecording(false);
+      setProcessing(true);
+      setProgress("Checking motion…");
 
-      const pct = Math.min(100, Math.round(((Date.now() - startedAt) / RECORD_MS) * 100));
-      setProgress(`Recording… ${pct}% — move your head slowly`);
+      try {
+        const liveness = validatePixelMotionSamples(frameDiffs);
+        if (!liveness.passed) {
+          throw new Error(
+            liveness.reason || "Live video required — static photos are not accepted."
+          );
+        }
 
-      await yieldToBrowser(8);
+        const blob = await captureJpegFromVideo(video);
+        stopCamera();
+        setProcessing(false);
+        setProgress("");
+        onVerified({ blob, motionScore: liveness.motionScore });
+      } catch (err) {
+        setProcessing(false);
+        setProgress("");
+        setError(err instanceof Error ? err.message : "Liveness check failed");
+        void startCamera();
+      }
+    };
+
+    sampleTimer = setInterval(() => {
       const elapsed = Date.now() - startedAt;
-      const waitMs = SAMPLE_MS - (elapsed % SAMPLE_MS);
-      if (waitMs > 0 && elapsed + waitMs < RECORD_MS) {
-        await new Promise((resolve) => setTimeout(resolve, waitMs));
-      }
-    }
-
-    setRecording(false);
-    setProcessing(true);
-    setProgress("Checking motion…");
-    await yieldToBrowser(16);
-
-    try {
-      const liveness = validateLivenessLandmarkFrames(landmarkFrames);
-      if (!liveness.passed) {
-        throw new Error(liveness.reason || "Live video required — static photos are not accepted.");
+      if (elapsed >= RECORD_MS) {
+        void finish();
+        return;
       }
 
-      const canvas = freezeVideoFrame(video, 720);
-      const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.88)
-      );
-      if (!blob) throw new Error("Could not capture photo");
+      const current = sampleVideoGrayscale(video);
+      if (current && previousGray) {
+        frameDiffs.push(grayscaleFrameDiff(previousGray, current));
+      }
+      if (current) previousGray = current;
 
-      stopCamera();
-      setProcessing(false);
-      setProgress("");
-      onVerified({ blob, motionScore: liveness.motionScore });
-    } catch (err) {
-      setProcessing(false);
-      setProgress("");
-      setError(err instanceof Error ? err.message : "Liveness check failed");
-      void startCamera();
-    }
+      const pct = Math.min(100, Math.round((elapsed / RECORD_MS) * 100));
+      setProgress(`Recording… ${pct}% — move your head slowly`);
+    }, SAMPLE_MS);
   };
 
   return (
@@ -171,6 +157,7 @@ export function MotionLivenessCapture({
           className="h-full w-full object-cover [-webkit-transform:scaleX(-1)] [transform:scaleX(-1)]"
           playsInline
           muted
+          autoPlay
         />
         {(starting || recording || processing) && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/50 px-4 text-center text-white">
@@ -186,7 +173,7 @@ export function MotionLivenessCapture({
       <Button
         className="w-full"
         size="lg"
-        onClick={() => void startRecording()}
+        onClick={startRecording}
         disabled={disabled || !cameraReady || starting || recording || processing}
       >
         <Video className="mr-2 h-4 w-4" />
