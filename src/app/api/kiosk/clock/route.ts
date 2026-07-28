@@ -9,6 +9,7 @@ const bodySchema = z.object({
   attemptType: z.enum(["check_in", "check_out"]),
   pin: z.string(),
   photoCaptureUrl: z.string().optional(),
+  diditSessionId: z.string().min(8).optional(),
 });
 
 export async function POST(request: Request) {
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
       attemptType: parsed.data.attemptType,
       pin: parsed.data.pin,
       photoCaptureUrl: parsed.data.photoCaptureUrl,
+      diditSessionId: parsed.data.diditSessionId,
     });
 
     return NextResponse.json(result, { status: result.success ? 200 : 422 });

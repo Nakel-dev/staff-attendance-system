@@ -1,5 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyKioskPin } from "@/lib/kiosk/pin";
+import {
+  getDiditSessionDecision,
+  isDiditConfigured,
+} from "@/lib/didit/client";
 import type { KioskSessionContext } from "@/lib/kiosk/session";
 
 export type ClockAttemptType = "check_in" | "check_out";
@@ -18,6 +22,7 @@ export interface ProcessClockInput {
   attemptType: ClockAttemptType;
   pin: string;
   photoCaptureUrl?: string;
+  diditSessionId?: string;
 }
 
 export interface ProcessClockResult {
@@ -179,10 +184,6 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
     };
   }
 
-  if (!input.photoCaptureUrl?.trim()) {
-    return enqueueReview(input, "missing_photo", staff);
-  }
-
   const sameDayDuplicate = await hasSameDayAcceptedRecord(input.staffId, input.attemptType);
   if (sameDayDuplicate) {
     return enqueueReview(input, "duplicate_day", staff);
@@ -191,6 +192,104 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
   const lastType = await getLastAcceptedType(input.staffId);
   if (lastType === input.attemptType) {
     return enqueueReview(input, "duplicate_day", staff, { consecutive: true });
+  }
+
+  const diditEnabled = isDiditConfigured();
+
+  if (diditEnabled) {
+    if (!staff.avatar_url) {
+      return enqueueReview(input, "photo_review", staff);
+    }
+    if (!input.diditSessionId?.trim()) {
+      await logAttempt(input, "liveness_fail", { reason: "missing_didit_session" });
+      return {
+        success: false,
+        status: "rejected",
+        message: "Face verification is required. Complete Didit face check first.",
+      };
+    }
+
+    const decision = await getDiditSessionDecision(input.diditSessionId);
+    if (String(decision.raw?.vendor_data || "") !== input.staffId) {
+      await logAttempt(input, "no_match", { reason: "vendor_data_mismatch", decision });
+      return {
+        success: false,
+        status: "rejected",
+        message: "Face verification does not match the selected staff member.",
+      };
+    }
+
+    if (decision.status === "Approved" && decision.livenessApproved && decision.faceMatchApproved) {
+      const { data: record, error } = await admin
+        .from("attendance_records")
+        .insert({
+          organization_id: input.session.organizationId,
+          staff_id: input.staffId,
+          type: input.attemptType,
+          match_status: "auto_matched",
+          liveness_passed: true,
+          liveness_score: decision.livenessScore ?? null,
+          confidence_score: decision.faceMatchScore ?? null,
+          photo_capture_url: input.photoCaptureUrl || null,
+          kiosk_device_id: input.session.kioskId,
+        })
+        .select("id, server_timestamp")
+        .single();
+
+      if (error) {
+        if (error.message.includes("duplicate_")) {
+          return enqueueReview(input, "duplicate_day", staff, { dbError: error.message });
+        }
+        throw new Error(error.message);
+      }
+
+      await logAttempt(input, "success", {
+        recordId: record.id,
+        diditSessionId: input.diditSessionId,
+        faceMatchScore: decision.faceMatchScore,
+        livenessScore: decision.livenessScore,
+      });
+
+      return {
+        success: true,
+        status: "clocked",
+        message:
+          input.attemptType === "check_in"
+            ? "Face verified. Checked in successfully."
+            : "Face verified. Checked out successfully.",
+        recordId: record.id,
+      };
+    }
+
+    if (decision.status === "Declined" || !decision.livenessApproved) {
+      return enqueueReview(input, "liveness_fail", staff, {
+        diditSessionId: input.diditSessionId,
+        diditStatus: decision.status,
+        faceMatchScore: decision.faceMatchScore,
+        livenessScore: decision.livenessScore,
+      });
+    }
+
+    if (!decision.faceMatchApproved || decision.status === "In Review") {
+      return enqueueReview(input, "no_match", staff, {
+        diditSessionId: input.diditSessionId,
+        diditStatus: decision.status,
+        faceMatchScore: decision.faceMatchScore,
+        livenessScore: decision.livenessScore,
+      });
+    }
+
+    await logAttempt(input, "liveness_fail", { diditStatus: decision.status });
+    return {
+      success: false,
+      status: "rejected",
+      message: `Face verification incomplete (${decision.status}). Try again.`,
+    };
+  }
+
+  // Fallback when Didit is not configured: PIN + local photo (manual review path)
+  if (!input.photoCaptureUrl?.trim()) {
+    return enqueueReview(input, "missing_photo", staff);
   }
 
   if (!staff.avatar_url) {
