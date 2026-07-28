@@ -49,6 +49,7 @@ export function ProfilePhotoCard({
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
   }, []);
 
   const startCamera = useCallback(async () => {
@@ -57,15 +58,11 @@ export function ProfilePhotoCard({
     stopCamera();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false,
       });
       streamRef.current = stream;
       setCameraOpen(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
     } catch {
       setCameraError("Could not access camera. Allow camera permission and try again.");
       setCameraOpen(false);
@@ -73,6 +70,14 @@ export function ProfilePhotoCard({
       setCameraStarting(false);
     }
   }, [stopCamera]);
+
+  // Video mounts only after cameraOpen — attach stream on the next render.
+  useEffect(() => {
+    if (!cameraOpen || !streamRef.current || !videoRef.current) return;
+    const video = videoRef.current;
+    video.srcObject = streamRef.current;
+    void video.play().catch(() => {});
+  }, [cameraOpen, cameraStarting]);
 
   useEffect(() => {
     if (!editable) return;
@@ -203,6 +208,7 @@ export function ProfilePhotoCard({
                 className="h-full w-full object-cover [-webkit-transform:scaleX(-1)] [transform:scaleX(-1)]"
                 playsInline
                 muted
+                autoPlay
               />
             </div>
             <canvas ref={canvasRef} className="hidden" />
