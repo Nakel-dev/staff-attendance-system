@@ -76,9 +76,23 @@ export async function POST(
       photoBytes = new Uint8Array(await file.arrayBuffer());
     }
 
+    let faceDescriptor: number[] | undefined;
+    const descriptorRaw = form.get("faceDescriptor");
+    if (typeof descriptorRaw === "string" && descriptorRaw.trim()) {
+      try {
+        const parsed = JSON.parse(descriptorRaw) as unknown;
+        if (Array.isArray(parsed) && parsed.every((n) => typeof n === "number")) {
+          faceDescriptor = parsed;
+        }
+      } catch {
+        /* ignore invalid descriptor */
+      }
+    }
+
     const result = await completePhoneClockChallenge({
       token,
       photoBytes,
+      faceDescriptor,
       diditSessionId,
     });
     return NextResponse.json(result, { status: result.success ? 200 : 422 });

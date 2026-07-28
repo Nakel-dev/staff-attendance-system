@@ -68,8 +68,8 @@ export default async function ProfilePage({
         <h2 className="text-2xl font-bold tracking-tight">My Profile</h2>
         <p className="text-muted-foreground">
           {promptEnrollment
-            ? "Step 1: take or upload your photo. Step 2: complete face verification below."
-            : "Upload your profile photo and complete face verification for reception kiosk matching. Clock in/out is only at the office kiosk."}
+            ? "Required: Step 1 — capture your face with the camera. Step 2 — complete face verification. Then you can use the portal and clock in at reception."
+            : "Your camera photo and face enrollment are used to match you at the reception kiosk. Clock in/out is only at the office kiosk."}
         </p>
         {profile.employee_code && (
           <p className="mt-1 text-sm font-medium">
@@ -84,6 +84,7 @@ export default async function ProfilePage({
       <ProfilePhotoCard
         profile={profile}
         avatarDisplayUrl={avatarDisplayUrl}
+        cameraOnly
         promptCapture={promptEnrollment && !profile.avatar_url}
       />
       <FaceEnrollmentCard promptEnrollment={promptEnrollment} />

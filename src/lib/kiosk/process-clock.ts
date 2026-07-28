@@ -137,7 +137,7 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
 
   const { data: staff } = await admin
     .from("profiles")
-    .select("id, full_name, is_active, organization_id, kiosk_pin_hash, avatar_url")
+    .select("id, full_name, is_active, organization_id, kiosk_pin_hash, avatar_url, face_enrolled_at")
     .eq("id", input.staffId)
     .maybeSingle();
 
@@ -149,6 +149,16 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
   if (staff.organization_id !== input.session.organizationId) {
     await logAttempt(input, "session_invalid");
     return { success: false, status: "rejected", message: "Staff does not belong to this organization." };
+  }
+
+  if (!staff.avatar_url || !staff.face_enrolled_at) {
+    await logAttempt(input, "liveness_fail", { reason: "not_enrolled" });
+    return {
+      success: false,
+      status: "rejected",
+      message:
+        "Staff must complete camera photo and face verification in the portal before clocking in.",
+    };
   }
 
   if (!staff.kiosk_pin_hash) {

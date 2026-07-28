@@ -7,6 +7,10 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { KioskPhotoCapture } from "@/components/kiosk/KioskPhotoCapture";
+import {
+  LiveFaceVerifyCapture,
+  type LiveFaceVerifyResult,
+} from "@/components/face/LiveFaceVerifyCapture";
 
 type Provider = "local" | "aws" | "didit";
 
@@ -150,11 +154,14 @@ export function PhoneClockClient({ token }: { token: string }) {
     }
   };
 
-  const submitPhoto = async (blob: Blob) => {
+  const submitPhoto = async (blob: Blob, faceDescriptor?: number[]) => {
     setSubmitting(true);
     try {
       const form = new FormData();
       form.append("file", blob, "selfie.jpg");
+      if (faceDescriptor?.length) {
+        form.append("faceDescriptor", JSON.stringify(faceDescriptor));
+      }
       const res = await fetch(`/api/clock/${token}/complete`, { method: "POST", body: form });
       const data = (await res.json()) as { success?: boolean; message?: string; error?: string };
       if (data.success) {
@@ -169,6 +176,10 @@ export function PhoneClockClient({ token }: { token: string }) {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const submitLocalFace = async (result: LiveFaceVerifyResult) => {
+    await submitPhoto(result.blob, result.descriptor);
   };
 
   if (loading) {
@@ -240,14 +251,18 @@ export function PhoneClockClient({ token }: { token: string }) {
         ) : (
           <div className="space-y-2">
             <p className="text-muted-foreground text-center text-sm">
-              Take a live selfie to finish {actionLabel.toLowerCase()}.
+              {challenge.provider === "aws"
+                ? "Take a live selfie. We match it to your signup photo."
+                : "Capture your face. We match it to your signup enrollment."}
             </p>
             {submitting ? (
               <div className="flex justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin" />
               </div>
-            ) : (
+            ) : challenge.provider === "aws" ? (
               <KioskPhotoCapture onCapture={(blob) => void submitPhoto(blob)} />
+            ) : (
+              <LiveFaceVerifyCapture onCapture={(r) => void submitLocalFace(r)} />
             )}
           </div>
         )}

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Loader2, Upload, X } from "lucide-react";
+import { Camera, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,8 @@ interface ProfilePhotoCardProps {
   avatarDisplayUrl?: string;
   staffProfileId?: string;
   editable?: boolean;
+  /** Staff self-service: camera only (no file upload). */
+  cameraOnly?: boolean;
   /** Highlight and open camera when staff lands from signup enroll flow */
   promptCapture?: boolean;
   onUploaded?: () => void;
@@ -26,11 +28,11 @@ export function ProfilePhotoCard({
   avatarDisplayUrl,
   staffProfileId,
   editable = true,
+  cameraOnly = true,
   promptCapture = false,
   onUploaded,
 }: ProfilePhotoCardProps) {
   const router = useRouter();
-  const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -62,7 +64,7 @@ export function ProfilePhotoCard({
         await videoRef.current.play();
       }
     } catch {
-      setCameraError("Could not access camera. Allow permission or upload a file instead.");
+      setCameraError("Could not access camera. Allow camera permission and try again.");
       setCameraOpen(false);
     } finally {
       setCameraStarting(false);
@@ -70,14 +72,15 @@ export function ProfilePhotoCard({
   }, [stopCamera]);
 
   useEffect(() => {
-    if (!promptCapture || !editable || profile.avatar_url) return;
-    void startCamera();
+    if (!editable) return;
+    if (promptCapture && !profile.avatar_url) {
+      void startCamera();
+    }
     return () => stopCamera();
-    // Auto-open once for enroll flow; avoid restarting on callback identity changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [promptCapture, editable, profile.avatar_url]);
 
-  const handleFile = async (file: File) => {
+  const savePhoto = async (file: File) => {
     setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
@@ -90,7 +93,7 @@ export function ProfilePhotoCard({
     }
 
     if (result.signedUrl) setPreviewUrl(result.signedUrl);
-    toast.success("Profile photo updated");
+    toast.success("Reference photo saved. Continue with face verification below.");
     stopCamera();
     setCameraOpen(false);
     onUploaded?.();
@@ -109,7 +112,7 @@ export function ProfilePhotoCard({
     canvas.toBlob(
       (blob) => {
         if (!blob) return;
-        void handleFile(new File([blob], "camera-photo.jpg", { type: "image/jpeg" }));
+        void savePhoto(new File([blob], "camera-photo.jpg", { type: "image/jpeg" }));
       },
       "image/jpeg",
       0.9
@@ -129,9 +132,11 @@ export function ProfilePhotoCard({
       id="profile-photo"
     >
       <CardHeader>
-        <CardTitle>Profile photo</CardTitle>
+        <CardTitle>Reference face photo</CardTitle>
         <CardDescription>
-          Upload a file or take a photo with your camera. This face is used for kiosk matching.
+          {cameraOnly
+            ? "Use your camera to capture a clear face photo. Clock-in later matches against this photo."
+            : "Capture or set a clear face photo used for attendance matching."}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -141,34 +146,9 @@ export function ProfilePhotoCard({
             <AvatarFallback className="text-xl">{getInitials(profile.full_name)}</AvatarFallback>
           </Avatar>
           {editable && (
-            <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
-              <input
-                ref={inputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void handleFile(file);
-                  e.target.value = "";
-                }}
-              />
+            <div className="space-y-2 text-center sm:text-left">
               <Button
                 type="button"
-                variant="outline"
-                disabled={uploading}
-                onClick={() => inputRef.current?.click()}
-              >
-                {uploading ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Upload className="mr-2 h-4 w-4" />
-                )}
-                Upload photo
-              </Button>
-              <Button
-                type="button"
-                variant="default"
                 disabled={uploading || cameraStarting}
                 onClick={() => void startCamera()}
               >
@@ -177,8 +157,11 @@ export function ProfilePhotoCard({
                 ) : (
                   <Camera className="mr-2 h-4 w-4" />
                 )}
-                Take photo
+                {profile.avatar_url ? "Retake with camera" : "Open camera"}
               </Button>
+              <p className="text-muted-foreground text-xs">
+                Look straight at the camera with good lighting. No file upload.
+              </p>
             </div>
           )}
         </div>
@@ -198,8 +181,12 @@ export function ProfilePhotoCard({
             <canvas ref={canvasRef} className="hidden" />
             <div className="flex flex-wrap justify-center gap-2">
               <Button onClick={captureFromCamera} disabled={uploading} size="lg">
-                {uploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
-                Use this photo
+                {uploading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Camera className="mr-2 h-4 w-4" />
+                )}
+                Capture photo
               </Button>
               <Button type="button" variant="outline" onClick={closeCamera} disabled={uploading}>
                 <X className="mr-2 h-4 w-4" />

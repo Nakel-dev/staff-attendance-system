@@ -12,6 +12,8 @@ import {
   isDiditConfigured,
 } from "@/lib/didit/client";
 import { normalizeBiometricProvider } from "@/lib/biometrics/providers";
+import { matchAgainstEmbeddings } from "@/lib/kiosk/face-match";
+import { FACE_MATCH_THRESHOLD, isValidFaceDescriptor } from "@/lib/utils/faceMatch";
 
 export const PHONE_CLOCK_TTL_SECONDS = 60;
 
@@ -36,7 +38,7 @@ export async function createPhoneClockChallenge(input: {
 
   const { data: staff } = await admin
     .from("profiles")
-    .select("id, full_name, is_active, organization_id, kiosk_pin_hash, avatar_url")
+    .select("id, full_name, is_active, organization_id, kiosk_pin_hash, avatar_url, face_enrolled_at")
     .eq("id", input.staffId)
     .maybeSingle();
 
@@ -46,9 +48,10 @@ export async function createPhoneClockChallenge(input: {
   if (!staff.kiosk_pin_hash || !verifyKioskPin(input.pin, staff.kiosk_pin_hash)) {
     return { error: "Incorrect PIN", status: 401 };
   }
-  if (!staff.avatar_url) {
+  if (!staff.avatar_url || !staff.face_enrolled_at) {
     return {
-      error: "No profile photo on file. Staff must upload a photo in the portal first.",
+      error:
+        "Complete camera photo and face verification in the staff portal before using the kiosk.",
       status: 422,
     };
   }
@@ -192,6 +195,7 @@ export async function getPhoneChallengeStatusForKiosk(token: string, kioskId: st
 export async function completePhoneClockChallenge(input: {
   token: string;
   photoBytes?: Uint8Array;
+  faceDescriptor?: number[];
   diditSessionId?: string;
 }): Promise<{ success: boolean; message: string; status?: string }> {
   const admin = createAdminClient();
@@ -221,13 +225,17 @@ export async function completePhoneClockChallenge(input: {
 
   const { data: staff } = await admin
     .from("profiles")
-    .select("id, full_name, is_active, avatar_url, organization_id")
+    .select("id, full_name, is_active, avatar_url, organization_id, face_enrolled_at")
     .eq("id", challenge.staff_id)
     .single();
 
-  if (!staff?.is_active || !staff.avatar_url) {
-    await failChallenge(challenge.id, "Staff profile or photo missing");
-    return { success: false, message: "Staff profile or photo missing", status: "rejected" };
+  if (!staff?.is_active || !staff.avatar_url || !staff.face_enrolled_at) {
+    await failChallenge(challenge.id, "Staff profile, photo, or face enrollment missing");
+    return {
+      success: false,
+      message: "Complete camera photo and face verification in the portal first.",
+      status: "rejected",
+    };
   }
 
   const { data: org } = await admin
@@ -274,17 +282,65 @@ export async function completePhoneClockChallenge(input: {
       await failChallenge(challenge.id, `AWS similarity ${comparison.similarity}`);
       return {
         success: false,
-        message: `Face did not match (${comparison.similarity.toFixed(0)}%). Try better lighting.`,
+        message: `Face did not match your signup photo (${comparison.similarity.toFixed(0)}%). Try better lighting.`,
       };
     }
     confidence = comparison.similarity;
     photoPath = await storePhoneCapture(challenge.staff_id, input.photoBytes);
   } else {
-    // local: require a live selfie (presence); enrollment already done on portal
-    if (!input.photoBytes?.byteLength) {
-      return { success: false, message: "Take a live selfie to finish clock-in." };
+    // local: match live face descriptor against signup enrollment embeddings
+    if (!input.faceDescriptor || !isValidFaceDescriptor(input.faceDescriptor)) {
+      return {
+        success: false,
+        message: "Take a live face capture so we can match it to your signup enrollment.",
+      };
     }
-    photoPath = await storePhoneCapture(challenge.staff_id, input.photoBytes);
+
+    const { data: embeddings } = await admin
+      .from("face_embeddings")
+      .select("embedding_values")
+      .eq("staff_id", challenge.staff_id)
+      .eq("is_active", true);
+
+    const stored: number[][] = (embeddings || [])
+      .map((row) => row.embedding_values as number[])
+      .filter((d) => Array.isArray(d) && d.length === 128);
+
+    const { data: profileDesc } = await admin
+      .from("profiles")
+      .select("face_descriptor")
+      .eq("id", challenge.staff_id)
+      .single();
+
+    if (Array.isArray(profileDesc?.face_descriptor) && profileDesc.face_descriptor.length === 128) {
+      stored.push(profileDesc.face_descriptor as number[]);
+    }
+
+    if (stored.length === 0) {
+      await failChallenge(challenge.id, "No enrollment embeddings");
+      return {
+        success: false,
+        message: "No face enrollment found. Complete face verification in the portal again.",
+      };
+    }
+
+    const match = matchAgainstEmbeddings(
+      input.faceDescriptor,
+      stored,
+      FACE_MATCH_THRESHOLD
+    );
+    if (!match.matched) {
+      await failChallenge(challenge.id, `local distance ${match.bestDistance}`);
+      return {
+        success: false,
+        message:
+          "Face did not match your signup enrollment. Try better lighting and look straight ahead.",
+      };
+    }
+    confidence = Math.round(match.confidenceScore * 100);
+    if (input.photoBytes?.byteLength) {
+      photoPath = await storePhoneCapture(challenge.staff_id, input.photoBytes);
+    }
     livenessPassed = true;
   }
 

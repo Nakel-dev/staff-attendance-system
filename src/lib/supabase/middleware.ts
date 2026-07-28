@@ -128,13 +128,21 @@ export async function updateSession(request: NextRequest) {
   if (user && isAuthRoute) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, avatar_url, face_enrolled_at")
       .eq("user_id", user.id)
       .single();
 
     if (profile?.role) {
       const url = request.nextUrl.clone();
-      url.pathname = profile.role === "admin" ? "/dashboard" : "/my-attendance";
+      if (
+        profile.role === "staff" &&
+        (!profile.avatar_url || !profile.face_enrolled_at)
+      ) {
+        url.pathname = "/profile";
+        url.searchParams.set("enroll", "1");
+      } else {
+        url.pathname = profile.role === "admin" ? "/dashboard" : "/my-attendance";
+      }
       const redirect = NextResponse.redirect(url);
       redirect.headers.set("x-request-id", requestId);
       return redirect;
@@ -146,7 +154,7 @@ export async function updateSession(request: NextRequest) {
   if (user && !isPublicRoute) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role, is_active")
+      .select("role, is_active, avatar_url, face_enrolled_at")
       .eq("user_id", user.id)
       .single();
 
@@ -170,6 +178,21 @@ export async function updateSession(request: NextRequest) {
     }
 
     const role = profile.role;
+
+    // Staff must finish camera photo + face verification before using the portal
+    if (
+      role === "staff" &&
+      (!profile.avatar_url || !profile.face_enrolled_at) &&
+      !pathname.startsWith("/profile") &&
+      !pathname.startsWith("/api/staff")
+    ) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/profile";
+      url.searchParams.set("enroll", "1");
+      const redirect = NextResponse.redirect(url);
+      redirect.headers.set("x-request-id", requestId);
+      return redirect;
+    }
 
     if (SHARED_ROUTES.some((r) => pathname.startsWith(r))) {
       return supabaseResponse;

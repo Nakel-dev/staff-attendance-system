@@ -87,7 +87,7 @@ export function SignUpPanel({ tab, onTabChange, onSwitchToSignIn }: SignUpPanelP
       }
       setSuccess({
         title: "Organization created",
-        message: `${orgForm.organizationName.trim()} is ready. Share the invite code so staff can join, upload a profile photo, and enroll their face. Clock in/out stays at the reception kiosk.`,
+        message: `${orgForm.organizationName.trim()} is ready. Share the invite code so staff can join, capture a camera photo, and enroll their face. Clock in/out stays at the reception kiosk.`,
         inviteCode: result.inviteCode,
         redirectTo: "/dashboard?welcome=1",
         buttonLabel: "Go to Admin Dashboard",
@@ -124,9 +124,9 @@ export function SignUpPanel({ tab, onTabChange, onSwitchToSignIn }: SignUpPanelP
       }
       setSuccess({
         title: "Welcome aboard",
-        message: `You joined ${result.organizationName}. Next: take or upload your profile photo, then complete face verification. Clock in/out only at the office reception kiosk.`,
+        message: `You joined ${result.organizationName}. Next: capture your face with the camera, then complete face verification. Clock in/out only at the office reception kiosk.`,
         redirectTo: "/profile?enroll=1",
-        buttonLabel: "Continue to photo & face setup",
+        buttonLabel: "Continue to camera & face setup",
       });
       toast.success(`Welcome to ${result.organizationName}!`);
     } finally {
@@ -367,8 +367,8 @@ export function SignUpPanel({ tab, onTabChange, onSwitchToSignIn }: SignUpPanelP
               Join Organization
             </Button>
             <p className="text-xs text-muted-foreground text-center">
-              After joining, sign in to take or upload your photo and complete face verification.
-              Daily clock in/out
+              After joining, sign in to capture your face with the camera and complete face
+              verification. Daily clock in/out
               is only at the reception kiosk.
             </p>
           </form>

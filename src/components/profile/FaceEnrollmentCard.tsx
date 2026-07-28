@@ -103,6 +103,9 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
             setPhase("done");
             setSessionId(null);
             toast.success("Identity verified with Didit");
+            if (promptEnrollment) {
+              window.location.href = "/my-attendance";
+            }
             return;
           }
           setPhase("idle");
@@ -120,7 +123,7 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
     }
     setPhase("idle");
     toast.error("Verification timed out. Complete the Didit window, then try again.");
-  }, []);
+  }, [promptEnrollment]);
 
   const startDiditVerify = async () => {
     if (!hasPhoto) {
@@ -182,6 +185,7 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
         setEnrolledAt(data.enrolledAt || new Date().toISOString());
         setShowCapture(false);
         toast.success(`AWS face match passed (${Number(data.similarity || 0).toFixed(0)}% similar)`);
+        if (promptEnrollment) window.location.href = "/my-attendance";
         return;
       }
 
@@ -204,7 +208,8 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
       setEnrolled(true);
       setEnrolledAt(new Date().toISOString());
       setShowCapture(false);
-      toast.success("Face registered (local biometric)");
+      toast.success("Face registered. You can clock in at the reception kiosk.");
+      if (promptEnrollment) window.location.href = "/my-attendance";
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Face registration failed");
     } finally {
@@ -247,10 +252,10 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
 
   const description =
     provider === "didit"
-      ? "Verify you match your profile photo with Didit. Clock in/out stays at the reception kiosk."
+      ? "Required at signup: verify your live face matches your camera photo. Daily clock-in matches this enrollment."
       : provider === "aws"
-        ? "Complete guided liveness, then AWS compares your live face to your profile photo (pay-as-you-go)."
-        : "Register head angles on this device (free). Clock in/out stays at the reception kiosk.";
+        ? "Required at signup: guided liveness, then AWS matches your live face to your camera photo."
+        : "Required at signup: register face angles here. Daily clock-in matches this enrollment at the kiosk.";
 
   return (
     <Card
