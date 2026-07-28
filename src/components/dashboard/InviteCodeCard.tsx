@@ -30,8 +30,8 @@ export function InviteCodeCard({ inviteCode, organizationName }: InviteCodeCardP
         </CardTitle>
         <CardDescription>
           Share this code so staff can join at <span className="font-medium">/auth</span> → Sign Up →
-          Join as Staff, then upload photo and enroll face. Daily clock in/out stays at the reception
-          kiosk.
+          Join as Staff, then upload a photo and verify with Didit. Daily clock in/out stays at the
+          reception kiosk.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col sm:flex-row sm:items-center gap-3">

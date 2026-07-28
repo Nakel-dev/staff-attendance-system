@@ -50,7 +50,7 @@ async function downloadProfilePhotoBase64(avatarPath: string): Promise<string> {
 export async function createBiometricAuthSession(input: {
   staffId: string;
   avatarPath: string;
-  attemptType: "check_in" | "check_out";
+  attemptType: "check_in" | "check_out" | "identity_verify";
   callbackUrl: string;
   metadata?: Record<string, unknown>;
 }): Promise<DiditSessionCreateResult> {
@@ -69,7 +69,10 @@ export async function createBiometricAuthSession(input: {
       callback: input.callbackUrl,
       metadata: {
         attempt_type: input.attemptType,
-        source: "attendpro_kiosk",
+        source:
+          input.attemptType === "identity_verify"
+            ? "attendpro_staff_portal"
+            : "attendpro_kiosk",
         ...input.metadata,
       },
       portrait_image: portraitImage,

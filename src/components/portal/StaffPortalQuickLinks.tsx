@@ -7,8 +7,8 @@ export function StaffPortalQuickLinks() {
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Staff portal shortcuts</CardTitle>
         <CardDescription>
-          Upload your profile photo and enroll your face for kiosk verification. Clock in/out is only
-          at the reception desk — not from this portal.
+          Upload your profile photo and verify identity with Didit. Clock in/out is only at the
+          reception desk — not from this portal.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col sm:flex-row gap-2">
@@ -17,7 +17,7 @@ export function StaffPortalQuickLinks() {
           className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           <Camera className="h-4 w-4" />
-          Photo & face setup
+          Photo & Didit verify
         </a>
         <a
           href="/profile"

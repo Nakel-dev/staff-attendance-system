@@ -108,8 +108,8 @@ export function OrganizationSettings({ organization, kiosks = [] }: Organization
           <CardHeader>
             <CardTitle>Staff Invite Code</CardTitle>
             <CardDescription>
-              Share this code so staff can join via Sign Up → Join as Staff, then set up their
-              profile photo and face enrollment. Clock in/out is only at the reception kiosk.
+              Share this code so staff can join via Sign Up → Join as Staff, then upload a profile
+              photo and verify with Didit. Clock in/out is only at the reception kiosk.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

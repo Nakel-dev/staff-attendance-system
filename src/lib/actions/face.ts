@@ -20,7 +20,7 @@ export async function getFaceEnrollmentStatus() {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("face_enrolled_at, face_reference_photo_url, face_reference_video_url")
+      .select("face_enrolled_at, face_reference_photo_url, face_reference_video_url, avatar_url")
       .eq("user_id", user.id)
       .single();
 
@@ -31,6 +31,7 @@ export async function getFaceEnrollmentStatus() {
       enrolledAt: profile.face_enrolled_at,
       referencePhotoPath: profile.face_reference_photo_url,
       referenceVideoPath: profile.face_reference_video_url,
+      hasProfilePhoto: !!profile.avatar_url,
     };
   } catch (err) {
     logError("face_enrollment_status_failed", { message: err instanceof Error ? err.message : "unknown" });

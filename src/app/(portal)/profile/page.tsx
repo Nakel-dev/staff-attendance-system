@@ -68,8 +68,8 @@ export default async function ProfilePage({
       <div>
         <h2 className="text-2xl font-bold tracking-tight">My Profile</h2>
         <p className="text-muted-foreground">
-          Upload your profile photo and enroll your face for reception kiosk verification. Clock
-          in/out is only at the office kiosk.
+          Upload your profile photo and verify your identity with Didit for reception kiosk matching.
+          Clock in/out is only at the office kiosk.
         </p>
       </div>
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">

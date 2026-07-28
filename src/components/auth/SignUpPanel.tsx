@@ -124,9 +124,9 @@ export function SignUpPanel({ tab, onTabChange, onSwitchToSignIn }: SignUpPanelP
       }
       setSuccess({
         title: "Welcome aboard",
-        message: `You joined ${result.organizationName}. Next: upload your profile photo and enroll your face. Clock in and out only at the office reception kiosk.`,
+        message: `You joined ${result.organizationName}. Next: upload your profile photo and verify your identity with Didit. Clock in/out only at the office reception kiosk.`,
         redirectTo: "/profile?enroll=1",
-        buttonLabel: "Set up photo & face",
+        buttonLabel: "Set up photo & Didit verify",
       });
       toast.success(`Welcome to ${result.organizationName}!`);
     } finally {
@@ -367,8 +367,8 @@ export function SignUpPanel({ tab, onTabChange, onSwitchToSignIn }: SignUpPanelP
               Join Organization
             </Button>
             <p className="text-xs text-muted-foreground text-center">
-              After joining, sign in to upload your photo and enroll your face. Daily clock in/out is
-              only at the reception kiosk.
+              After joining, sign in to upload your photo and verify with Didit. Daily clock in/out
+              is only at the reception kiosk.
             </p>
           </form>
         </TabsContent>
