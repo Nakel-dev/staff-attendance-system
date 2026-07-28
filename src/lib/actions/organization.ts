@@ -108,16 +108,35 @@ export async function getOrganizationSettings() {
     if ("error" in auth) return { error: auth.error };
 
     const admin = createAdminClient();
-    const { data: org, error } = await admin
+    const baseSelect =
+      "id, name, invite_code, slug, created_at, attendance_mode, office_latitude, office_longitude, geofence_radius_m, require_video_verification, require_face_match, require_geofence, require_qr_code";
+
+    let { data: org, error } = await admin
       .from("organizations")
-      .select(
-        "id, name, invite_code, slug, created_at, attendance_mode, office_latitude, office_longitude, geofence_radius_m, require_video_verification, require_face_match, require_geofence, require_qr_code, biometric_provider"
-      )
+      .select(`${baseSelect}, biometric_provider`)
       .eq("id", auth.profile.organization_id)
       .single();
 
+    // Migration 013 not applied yet — load settings without biometric_provider
+    if (error && /biometric_provider/i.test(error.message)) {
+      const fallback = await admin
+        .from("organizations")
+        .select(baseSelect)
+        .eq("id", auth.profile.organization_id)
+        .single();
+      org = fallback.data
+        ? { ...fallback.data, biometric_provider: "local" }
+        : null;
+      error = fallback.error;
+    }
+
     if (error || !org) return { error: error?.message || "Organization not found" };
-    return { organization: org };
+    return {
+      organization: {
+        ...org,
+        biometric_provider: org.biometric_provider || "local",
+      },
+    };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Failed to load settings" };
   }
@@ -154,21 +173,30 @@ export async function updateAttendanceSecuritySettings(input: {
     }
 
     const admin = createAdminClient();
-    const { error } = await admin
+    const payload = {
+      attendance_mode: input.attendanceMode,
+      office_latitude: input.officeLatitude,
+      office_longitude: input.officeLongitude,
+      geofence_radius_m: input.geofenceRadiusM,
+      require_video_verification: input.requireVideoVerification,
+      require_face_match: input.requireFaceMatch,
+      require_geofence: input.requireGeofence,
+      require_qr_code: input.requireQrCode,
+      biometric_provider: input.biometricProvider,
+      updated_at: new Date().toISOString(),
+    };
+
+    let { error } = await admin
       .from("organizations")
-      .update({
-        attendance_mode: input.attendanceMode,
-        office_latitude: input.officeLatitude,
-        office_longitude: input.officeLongitude,
-        geofence_radius_m: input.geofenceRadiusM,
-        require_video_verification: input.requireVideoVerification,
-        require_face_match: input.requireFaceMatch,
-        require_geofence: input.requireGeofence,
-        require_qr_code: input.requireQrCode,
-        biometric_provider: input.biometricProvider,
-        updated_at: new Date().toISOString(),
-      })
+      .update(payload)
       .eq("id", auth.profile.organization_id);
+
+    if (error && /biometric_provider/i.test(error.message)) {
+      return {
+        error:
+          "Database is missing biometric_provider. Run migration 013_biometric_provider.sql in Supabase SQL Editor, then try again.",
+      };
+    }
 
     if (error) return { error: error.message };
 
