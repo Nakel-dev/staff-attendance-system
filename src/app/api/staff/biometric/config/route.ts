@@ -2,14 +2,13 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isDiditConfigured } from "@/lib/didit/client";
-import { isAwsRekognitionConfigured } from "@/lib/aws/rekognition";
-import { isAwsFaceLivenessConfigured } from "@/lib/aws/face-liveness";
+import { isFacePlusPlusConfigured } from "@/lib/faceplusplus/client";
 import {
   isBiometricProviderReady,
   normalizeBiometricProvider,
 } from "@/lib/biometrics/providers";
 
-/** Staff portal: which biometric provider this organization uses. */
+/** Staff portal: org face verification method + deployment availability. */
 export async function GET() {
   const supabase = await createClient();
   const {
@@ -34,22 +33,24 @@ export async function GET() {
     .eq("id", profile.organization_id)
     .maybeSingle();
 
-  const provider = normalizeBiometricProvider(org?.biometric_provider);
+  const portalProvider = normalizeBiometricProvider(org?.biometric_provider);
+  const faceppOk = isFacePlusPlusConfigured();
   const diditOk = isDiditConfigured();
-  const awsOk = isAwsRekognitionConfigured();
-  const ready = isBiometricProviderReady(provider, {
-    awsConfigured: awsOk,
+  const ready = isBiometricProviderReady(portalProvider, {
+    faceplusplusConfigured: faceppOk,
     diditConfigured: diditOk,
   });
 
   return NextResponse.json({
-    provider,
+    provider: portalProvider,
+    portalProvider,
     ready,
-    awsLiveness: isAwsFaceLivenessConfigured(),
-    availability: { local: true, didit: diditOk, aws: awsOk },
+    availability: { local: true, didit: diditOk, faceplusplus: faceppOk },
     setupHint:
-      provider === "aws" && !awsOk
-        ? "AWS keys are not on the Vercel server yet. Admin must add AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_REGION, then redeploy."
-        : undefined,
+      portalProvider === "faceplusplus" && !faceppOk
+        ? "Face++ keys are missing. Add FACEPP_API_KEY and FACEPP_API_SECRET to .env.local."
+        : portalProvider === "didit" && !diditOk
+          ? "Didit is not configured. Add Didit keys or switch admin settings to Face++."
+          : undefined,
   });
 }

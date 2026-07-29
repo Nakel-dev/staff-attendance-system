@@ -20,8 +20,8 @@ export function StaffAttendanceStatus({ todayRecord }: StaffAttendanceStatusProp
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-muted-foreground text-sm">
-          Clock in and out only at the reception kiosk with Didit facial verification. Use this
-          portal to view records, upload your profile photo, and verify your identity — not to clock
+          Clock in and out only at the reception kiosk with face verification. Use this portal to
+          view records, upload your profile photo, and complete identity verification — not to clock
           yourself in.
         </p>
         <div className="rounded-lg border p-4 space-y-2">
@@ -47,7 +47,7 @@ export function StaffAttendanceStatus({ todayRecord }: StaffAttendanceStatusProp
           className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           <Camera className="h-4 w-4" />
-          Photo & Didit verify
+          Photo & face verify
         </a>
       </CardContent>
     </Card>

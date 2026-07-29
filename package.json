@@ -16,6 +16,7 @@
     "migrate": "ts-node --transpile-only -r dotenv/config scripts/migrate.ts",
     "migrate:secure": "ts-node --transpile-only -r dotenv/config scripts/apply-migrations.ts 005 006 007",
     "verify:aws": "ts-node --transpile-only scripts/verify-aws-rekognition.ts",
+    "verify:facepp": "ts-node --transpile-only scripts/verify-faceplusplus.ts",
     "screenshots": "node scripts/capture-screenshots.mjs",
     "test:prelaunch": "playwright test tests/prelaunch.spec.ts",
     "desktop:prepare": "npm run build && node scripts/prepare-standalone.js",

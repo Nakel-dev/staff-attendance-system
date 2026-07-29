@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { KioskSetupForm } from "@/components/kiosk/KioskSetupForm";
-import { KioskClockApp } from "@/components/kiosk/KioskClockApp";
+import { KioskFaceClockApp } from "@/components/kiosk/KioskFaceClockApp";
 import type { Profile } from "@/lib/types";
 
 export function KioskPageClient() {
@@ -13,17 +13,18 @@ export function KioskPageClient() {
   );
   const [booting, setBooting] = useState(true);
 
+  const loadStaff = () =>
+    fetch("/api/kiosk/staff-list")
+      .then((r) => r.json())
+      .then((d: { staff?: typeof staff }) => setStaff(d.staff || []));
+
   useEffect(() => {
     void (async () => {
       const sessionRes = await fetch("/api/kiosk/session");
       if (sessionRes.ok) {
         const sessionData = (await sessionRes.json()) as { deviceName?: string };
         setDeviceName(sessionData.deviceName || "Kiosk");
-        const staffRes = await fetch("/api/kiosk/staff-list");
-        if (staffRes.ok) {
-          const data = (await staffRes.json()) as { staff: typeof staff };
-          setStaff(data.staff || []);
-        }
+        await loadStaff();
       }
       setBooting(false);
     })();
@@ -43,9 +44,7 @@ export function KioskPageClient() {
         <KioskSetupForm
           onAuthenticated={(name) => {
             setDeviceName(name);
-            void fetch("/api/kiosk/staff-list")
-              .then((res) => res.json())
-              .then((data: { staff?: typeof staff }) => setStaff(data.staff || []));
+            void loadStaff();
           }}
         />
       </div>
@@ -54,7 +53,7 @@ export function KioskPageClient() {
 
   return (
     <div className="min-h-screen bg-background">
-      <KioskClockApp staff={staff} deviceName={deviceName} />
+      <KioskFaceClockApp staff={staff} deviceName={deviceName} />
     </div>
   );
 }

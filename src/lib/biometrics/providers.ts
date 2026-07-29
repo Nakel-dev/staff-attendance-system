@@ -1,30 +1,31 @@
-export type BiometricProvider = "local" | "didit" | "aws";
+export type BiometricProvider = "local" | "didit" | "faceplusplus";
 
-export const BIOMETRIC_PROVIDERS: BiometricProvider[] = ["local", "didit", "aws"];
+export const BIOMETRIC_PROVIDERS: BiometricProvider[] = ["faceplusplus", "didit", "local"];
 
 export const BIOMETRIC_PROVIDER_LABELS: Record<BiometricProvider, string> = {
+  faceplusplus: "Face++",
   local: "Local (free)",
   didit: "Didit",
-  aws: "AWS Rekognition",
 };
 
 export const BIOMETRIC_PROVIDER_HINTS: Record<BiometricProvider, string> = {
+  faceplusplus: "Portal face verification + kiosk Face++ compare (recommended)",
   local: "On-device face match only — no cloud bill",
-  didit: "Third-party liveness + face match",
-  aws: "Live check + CompareFaces (~$0.001/compare)",
+  didit: "Third-party liveness + face match fallback",
 };
 
+/** Legacy org rows may still store "aws" — treat as Face++. */
 export function normalizeBiometricProvider(value: unknown): BiometricProvider {
-  if (value === "didit" || value === "aws" || value === "local") return value;
-  return "aws";
+  if (value === "faceplusplus" || value === "didit" || value === "local") return value;
+  if (value === "aws") return "faceplusplus";
+  return "faceplusplus";
 }
 
-/** Whether the deployment can run the org's chosen provider (no silent downgrade). */
 export function isBiometricProviderReady(
   provider: BiometricProvider,
-  opts: { awsConfigured: boolean; diditConfigured: boolean }
+  opts: { faceplusplusConfigured: boolean; diditConfigured: boolean }
 ): boolean {
-  if (provider === "aws") return opts.awsConfigured;
+  if (provider === "faceplusplus") return opts.faceplusplusConfigured;
   if (provider === "didit") return opts.diditConfigured;
   return true;
 }

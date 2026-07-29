@@ -8,15 +8,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { clearFaceEnrollment, getFaceEnrollmentStatus } from "@/lib/actions/face";
-import { AwsFaceEnrollmentCapture } from "@/components/face/AwsFaceEnrollmentCapture";
+import { FacePlusPlusEnrollmentCapture } from "@/components/face/FacePlusPlusEnrollmentCapture";
 import { LocalFaceEnrollmentCapture } from "@/components/face/LocalFaceEnrollmentCapture";
-import type { BiometricProvider } from "@/lib/biometrics/providers";
+
+type PortalVerifyProvider = "faceplusplus" | "didit" | "local";
 
 type VerifyPhase = "idle" | "waiting" | "done";
 
 export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollment?: boolean }) {
-  const [provider, setProvider] = useState<BiometricProvider>("aws");
-  const [awsLiveness, setAwsLiveness] = useState(false);
+  const [provider, setProvider] = useState<PortalVerifyProvider>("faceplusplus");
   const [providerReady, setProviderReady] = useState(true);
   const [setupHint, setSetupHint] = useState<string | null>(null);
   const [enrolled, setEnrolled] = useState(false);
@@ -36,11 +36,14 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
       fetch("/api/staff/biometric/config").then((r) => r.json().catch(() => ({}))),
     ]);
 
-    if (configRes.provider === "didit" || configRes.provider === "aws" || configRes.provider === "local") {
-      setProvider(configRes.provider);
+    if (
+      configRes.portalProvider === "faceplusplus" ||
+      configRes.portalProvider === "didit" ||
+      configRes.portalProvider === "local"
+    ) {
+      setProvider(configRes.portalProvider);
     }
     setProviderReady(configRes.ready !== false);
-    setAwsLiveness(configRes.awsLiveness === true);
     setSetupHint(typeof configRes.setupHint === "string" ? configRes.setupHint : null);
 
     if ("error" in status) {
@@ -65,7 +68,7 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
     if (promptEnrollment && !loading && !enrolled && hasPhoto && providerReady) {
       if (provider === "didit") {
         document.getElementById("face-enrollment")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      } else if (provider === "aws" || provider === "local") {
+      } else {
         setShowCapture(true);
       }
     }
@@ -152,12 +155,12 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
     }
   };
 
-  const handleAwsEnrollmentSuccess = (result: { enrolledAt: string; similarity: number }) => {
+  const handleFacePlusPlusSuccess = (result: { enrolledAt: string; confidence: number }) => {
     setEnrolled(true);
     setEnrolledAt(result.enrolledAt);
     setShowCapture(false);
     setProcessing(false);
-    toast.success(`AWS face match passed (${result.similarity.toFixed(0)}% similar)`);
+    toast.success(`Face verified (${result.confidence.toFixed(0)}% match). Clock in at the reception kiosk.`);
     if (promptEnrollment) window.location.href = "/my-attendance";
   };
 
@@ -197,18 +200,18 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
   }
 
   const title =
-    provider === "didit"
-      ? "Didit identity verification"
-      : provider === "aws"
-        ? "AWS face verification"
+    provider === "faceplusplus"
+      ? "Face verification (portal)"
+      : provider === "didit"
+        ? "Didit identity verification"
         : "Local face registration";
 
   const description =
-    provider === "didit"
-      ? "Required at signup: verify your live face matches your camera photo. Daily clock-in matches this enrollment."
-      : provider === "aws"
-        ? "Required at signup: complete a live face check, then AWS compares it to your profile photo."
-        : "Required at signup: record a live clip here. Kiosk matching uses your reference photo above.";
+    provider === "faceplusplus"
+      ? "Required once: verify your live face matches your profile photo. The reception kiosk matches against this verification — clock in/out is not available here."
+      : provider === "didit"
+        ? "Required once: verify your live face matches your profile photo. Kiosk clock-in uses the same identity."
+        : "Required once: record a live clip here. Kiosk matching uses your profile photo above.";
 
   return (
     <Card
@@ -234,7 +237,7 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
 
         {setupHint && (
           <Alert variant="destructive">
-            <AlertTitle>AWS not connected yet</AlertTitle>
+            <AlertTitle>Verification not available</AlertTitle>
             <AlertDescription>{setupHint}</AlertDescription>
           </Alert>
         )}
@@ -243,7 +246,7 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
           <Alert>
             <AlertTitle>Profile photo required</AlertTitle>
             <AlertDescription>
-              Capture a clear face photo with the camera above first, then continue AWS face verification here.
+              Capture a clear face photo with the camera above first, then complete face verification here.
             </AlertDescription>
           </Alert>
         )}
@@ -254,15 +257,16 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
             <AlertTitle>Identity verified</AlertTitle>
             <AlertDescription>
               {enrolledAt
-                ? `Verified on ${format(new Date(enrolledAt), "MMM d, yyyy 'at' h:mm a")}`
-                : "Your identity is verified for kiosk matching."}
+                ? `Verified on ${format(new Date(enrolledAt), "MMM d, yyyy 'at' h:mm a")}. Use the reception kiosk to clock in and out.`
+                : "Your identity is verified for kiosk matching. Clock in/out only at reception."}
             </AlertDescription>
           </Alert>
         ) : (
           <Alert>
             <AlertTitle>Verification needed</AlertTitle>
             <AlertDescription>
-              Complete verification here so the reception kiosk can recognize you.
+              Complete verification here before using the kiosk. This portal is for identity setup and
+              viewing records only — not for clocking in or out.
             </AlertDescription>
           </Alert>
         )}
@@ -323,16 +327,15 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
                 onClick={() => setShowCapture(true)}
                 disabled={processing || !hasPhoto || !providerReady}
               >
-                {provider === "aws" ? "Start AWS face verification" : "Start face registration"}
+                {provider === "faceplusplus" ? "Start face verification" : "Start face registration"}
               </Button>
             )}
 
-            {providerReady && showCapture && provider === "aws" && (
-              <AwsFaceEnrollmentCapture
-                awsLivenessEnabled={awsLiveness}
+            {providerReady && showCapture && provider === "faceplusplus" && (
+              <FacePlusPlusEnrollmentCapture
                 disabled={processing}
                 onStop={() => setShowCapture(false)}
-                onSuccess={handleAwsEnrollmentSuccess}
+                onSuccess={handleFacePlusPlusSuccess}
               />
             )}
 

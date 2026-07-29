@@ -39,15 +39,18 @@ interface BiometricProviderCardProps {
 
 export function BiometricProviderCard({ organization }: BiometricProviderCardProps) {
   const [provider, setProvider] = useState<BiometricProvider>(
-    normalizeBiometricProvider(organization.biometric_provider || "aws")
+    normalizeBiometricProvider(organization.biometric_provider)
   );
-  const [availability, setAvailability] = useState({ local: true, didit: false, aws: false });
-  const [awsStatus, setAwsStatus] = useState<{
+  const [availability, setAvailability] = useState({
+    local: true,
+    didit: false,
+    faceplusplus: false,
+  });
+  const [faceppStatus, setFaceppStatus] = useState<{
     ok?: boolean;
     configured?: boolean;
-    livenessConfigured?: boolean;
     message?: string;
-    region?: string;
+    confidenceThreshold?: number;
   } | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -56,24 +59,24 @@ export function BiometricProviderCard({ organization }: BiometricProviderCardPro
     let cancelled = false;
     void (async () => {
       try {
-        const [availabilityRes, awsRes] = await Promise.all([
+        const [availabilityRes, faceppRes] = await Promise.all([
           fetch("/api/admin/biometric-availability"),
-          fetch("/api/admin/aws/status"),
+          fetch("/api/admin/faceplusplus/status"),
         ]);
         if (cancelled) return;
         const availabilityData = (await availabilityRes.json()) as {
           local?: boolean;
           didit?: boolean;
-          aws?: boolean;
+          faceplusplus?: boolean;
         };
         setAvailability({
           local: availabilityData.local !== false,
           didit: !!availabilityData.didit,
-          aws: !!availabilityData.aws,
+          faceplusplus: !!availabilityData.faceplusplus,
         });
-        setAwsStatus((await awsRes.json()) as typeof awsStatus);
+        setFaceppStatus((await faceppRes.json()) as typeof faceppStatus);
       } catch {
-        if (!cancelled) setAwsStatus(null);
+        if (!cancelled) setFaceppStatus(null);
       } finally {
         if (!cancelled) setStatusLoading(false);
       }
@@ -85,12 +88,12 @@ export function BiometricProviderCard({ organization }: BiometricProviderCardPro
 
   const handleSave = async () => {
     if (provider === "didit" && !availability.didit) {
-      toast.error("Didit is not configured (DIDIT_API_KEY / DIDIT_WORKFLOW_ID on Vercel).");
+      toast.error("Didit is not configured (DIDIT_API_KEY / DIDIT_WORKFLOW_ID).");
       return;
     }
-    if (provider === "aws" && !availability.aws) {
+    if (provider === "faceplusplus" && !availability.faceplusplus) {
       toast.error(
-        "AWS is not configured. Add AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION to Vercel — see BIOMETRIC_SETUP.md."
+        "Face++ is not configured. Add FACEPP_API_KEY and FACEPP_API_SECRET — see FACEPP_SETUP.md."
       );
       return;
     }
@@ -117,7 +120,7 @@ export function BiometricProviderCard({ organization }: BiometricProviderCardPro
     toast.success("Face verification method saved");
   };
 
-  const awsConnected = awsStatus?.configured && awsStatus.ok;
+  const faceppConnected = faceppStatus?.configured && faceppStatus.ok;
 
   return (
     <Card className="lg:col-span-2">
@@ -127,34 +130,35 @@ export function BiometricProviderCard({ organization }: BiometricProviderCardPro
           Face verification
         </CardTitle>
         <CardDescription className="text-xs">
-          How staff prove identity at signup and kiosk clock-in. Setup:{" "}
-          <code className="rounded bg-muted px-1">BIOMETRIC_SETUP.md</code>
+          How staff verify identity in the portal and at the kiosk. Setup:{" "}
+          <code className="rounded bg-muted px-1">FACEPP_SETUP.md</code>
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {statusLoading ? (
-          <div className="text-muted-foreground flex items-center gap-2 text-xs">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Checking AWS connection…
-          </div>
-        ) : awsConnected ? (
-          <div className="flex items-start gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900 dark:border-green-900 dark:bg-green-950/40 dark:text-green-100">
-            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>
-              AWS connected ({awsStatus?.region}).{" "}
-              {awsStatus?.livenessConfigured
-                ? "Face Liveness enabled."
-                : "Motion liveness active — add Cognito pool for AWS Face Liveness."}
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>
-              {awsStatus?.message ||
-                "AWS keys missing on this server. Add them on Vercel and redeploy."}
-            </span>
-          </div>
+        {provider === "faceplusplus" && (
+          <>
+            {statusLoading ? (
+              <div className="text-muted-foreground flex items-center gap-2 text-xs">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Checking Face++ connection…
+              </div>
+            ) : faceppConnected ? (
+              <div className="flex items-start gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900 dark:border-green-900 dark:bg-green-950/40 dark:text-green-100">
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  Face++ connected. Match threshold: {faceppStatus?.confidenceThreshold ?? 70}%.
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  {faceppStatus?.message ||
+                    "Face++ keys missing. Add FACEPP_API_KEY and FACEPP_API_SECRET to .env.local."}
+                </span>
+              </div>
+            )}
+          </>
         )}
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -174,7 +178,9 @@ export function BiometricProviderCard({ organization }: BiometricProviderCardPro
                   <SelectItem key={option} value={option}>
                     {BIOMETRIC_PROVIDER_LABELS[option]}
                     {option === "didit" && !availability.didit ? " · not configured" : ""}
-                    {option === "aws" && !availability.aws ? " · not configured" : ""}
+                    {option === "faceplusplus" && !availability.faceplusplus
+                      ? " · not configured"
+                      : ""}
                   </SelectItem>
                 ))}
               </SelectContent>

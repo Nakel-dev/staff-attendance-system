@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getKioskSessionFromCookies } from "@/lib/kiosk/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getKioskSessionFromCookies } from "@/lib/kiosk/session";
 import { isDiditConfigured } from "@/lib/didit/client";
-import { isAwsRekognitionConfigured } from "@/lib/aws/rekognition";
+import { isFacePlusPlusConfigured } from "@/lib/faceplusplus/client";
 import {
   isBiometricProviderReady,
   normalizeBiometricProvider,
@@ -12,7 +12,7 @@ import {
 export async function GET() {
   const session = await getKioskSessionFromCookies();
   if (!session) {
-    return NextResponse.json({ error: "Invalid or expired kiosk session" }, { status: 401 });
+    return NextResponse.json({ error: "Invalid kiosk session" }, { status: 401 });
   }
 
   const admin = createAdminClient();
@@ -23,17 +23,17 @@ export async function GET() {
     .maybeSingle();
 
   const provider = normalizeBiometricProvider(org?.biometric_provider);
+  const faceppOk = isFacePlusPlusConfigured();
   const diditOk = isDiditConfigured();
-  const awsOk = isAwsRekognitionConfigured();
   const ready = isBiometricProviderReady(provider, {
-    awsConfigured: awsOk,
+    faceplusplusConfigured: faceppOk,
     diditConfigured: diditOk,
   });
 
   return NextResponse.json({
     provider,
     ready,
+    faceplusplusConfigured: faceppOk,
     diditConfigured: diditOk,
-    awsConfigured: awsOk,
   });
 }

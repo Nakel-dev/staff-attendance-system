@@ -8,7 +8,7 @@ import { createBiometricAuthSession, isDiditConfigured } from "@/lib/didit/clien
 const bodySchema = z.object({
   staffId: z.string().uuid(),
   attemptType: z.enum(["check_in", "check_out"]),
-  pin: z.string().regex(/^\d{4}$/),
+  pin: z.string().regex(/^\d{4}$/).optional(),
 });
 
 export async function POST(request: Request) {
@@ -41,7 +41,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Staff not found" }, { status: 404 });
     }
 
-    if (!staff.kiosk_pin_hash || !verifyKioskPin(parsed.data.pin, staff.kiosk_pin_hash)) {
+    if (
+      staff.kiosk_pin_hash &&
+      parsed.data.pin &&
+      !verifyKioskPin(parsed.data.pin, staff.kiosk_pin_hash)
+    ) {
       return NextResponse.json({ error: "Incorrect PIN" }, { status: 401 });
     }
 

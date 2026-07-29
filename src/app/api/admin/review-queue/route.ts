@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthenticatedProfile } from "@/lib/supabase/profile";
-import { getSignedKioskPhotoUrl, getSignedProfilePhotoUrl } from "@/lib/storage/photos";
+import { getSignedKioskPhotoUrl, getSignedProfilePhotoUrl, getSignedStorageUrl } from "@/lib/storage/photos";
 
 export async function GET() {
   const supabase = await createClient();
@@ -33,16 +33,18 @@ export async function GET() {
         avatar_url?: string | null;
       } | null;
 
-      const [liveCaptureSignedUrl, storedReferenceSignedUrl, profilePhotoSignedUrl] =
+      const [liveCaptureSignedUrl, storedReferenceSignedUrl, profilePhotoSignedUrl, livenessClipSignedUrl] =
         await Promise.all([
           getSignedKioskPhotoUrl(item.live_capture_url),
           getSignedProfilePhotoUrl(item.stored_reference_url),
           getSignedProfilePhotoUrl(staffProfile?.avatar_url),
+          getSignedStorageUrl("kiosk-liveness-clips", item.liveness_clip_url),
         ]);
 
       return {
         ...item,
         liveCaptureSignedUrl,
+        livenessClipSignedUrl,
         storedReferenceSignedUrl: storedReferenceSignedUrl || profilePhotoSignedUrl,
         profiles: staffProfile,
       };

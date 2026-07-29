@@ -1,14 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   captureJpegFromVideo,
-  grayscaleFrameDiff,
   sampleVideoGrayscale,
 } from "@/lib/face/pixel-motion";
-import { validatePixelMotionSamples, MIN_PIXEL_MOTION_FRAMES } from "@/lib/face/liveness";
+import { validateGrayscaleMotionSequence } from "@/lib/face/motion-analysis";
+import { MIN_PIXEL_MOTION_FRAMES } from "@/lib/face/liveness";
 
 export type MotionLivenessResult = {
   blob: Blob;
@@ -16,8 +16,24 @@ export type MotionLivenessResult = {
   frameJpegs: Blob[];
 };
 
-const RECORD_MS = 3500;
-const SAMPLE_MS = 400;
+const RECORD_MS = 4000;
+const SAMPLE_MS = 450;
+
+type HeadTurnChallenge = "left" | "right";
+
+function randomChallenge(): HeadTurnChallenge {
+  return Math.random() < 0.5 ? "left" : "right";
+}
+
+function challengeHint(challenge: HeadTurnChallenge, phase: "start" | "mid" | "end"): string {
+  const turn =
+    challenge === "left"
+      ? "Slowly turn your head to YOUR LEFT"
+      : "Slowly turn your head to YOUR RIGHT";
+  if (phase === "start") return `Look at the camera, then ${turn.toLowerCase()}.`;
+  if (phase === "mid") return `${turn}, then turn back to center.`;
+  return "Turn back to face the camera.";
+}
 
 function waitForVideoFrame(video: HTMLVideoElement): Promise<void> {
   if (video.readyState >= 2 && video.videoWidth > 0) return Promise.resolve();
@@ -30,11 +46,11 @@ function waitForVideoFrame(video: HTMLVideoElement): Promise<void> {
   });
 }
 
-/** Instant live motion check — canvas pixel diffs only, no ML model download. */
+/** Lightweight live motion check — head-turn challenge, no ML model download. */
 export function MotionLivenessCapture({
   onVerified,
   disabled,
-  hint = "Center your face, then record for 3–4 seconds while slowly turning your head left and right.",
+  hint,
 }: {
   onVerified: (result: MotionLivenessResult) => void;
   disabled?: boolean;
@@ -43,6 +59,7 @@ export function MotionLivenessCapture({
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recordingRef = useRef(false);
+  const challengeRef = useRef<HeadTurnChallenge>(randomChallenge());
 
   const [cameraReady, setCameraReady] = useState(false);
   const [starting, setStarting] = useState(true);
@@ -50,6 +67,13 @@ export function MotionLivenessCapture({
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  const defaultHint = useMemo(
+    () =>
+      hint ||
+      "Center your face, then record ~4 seconds while slowly turning your head left and right. Static photos are rejected.",
+    [hint]
+  );
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -66,7 +90,12 @@ export function MotionLivenessCapture({
     stopCamera();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        video: {
+          facingMode: "user",
+          width: { ideal: 480, max: 640 },
+          height: { ideal: 360, max: 480 },
+          frameRate: { ideal: 15, max: 24 },
+        },
         audio: false,
       });
       streamRef.current = stream;
@@ -91,14 +120,14 @@ export function MotionLivenessCapture({
     const video = videoRef.current;
     if (!video || disabled || recordingRef.current || recording || processing) return;
 
+    challengeRef.current = randomChallenge();
     recordingRef.current = true;
     setRecording(true);
     setError(null);
-    setProgress("Recording… 0% — move your head slowly");
+    setProgress(challengeHint(challengeRef.current, "start"));
 
-    const frameDiffs: number[] = [];
+    const grayFrames: Uint8Array[] = [];
     const pendingJpegs: Promise<Blob>[] = [];
-    let previousGray: Uint8Array | null = null;
     const startedAt = Date.now();
     let sampleTimer: ReturnType<typeof setInterval> | null = null;
     let finished = false;
@@ -110,12 +139,13 @@ export function MotionLivenessCapture({
       recordingRef.current = false;
       setRecording(false);
       setProcessing(true);
-      setProgress("Checking motion…");
+      setProgress("Checking head movement…");
 
       try {
         const captured = await Promise.all(pendingJpegs);
         const frameJpegs = captured.filter((jpeg) => jpeg.size > 200);
-        const liveness = validatePixelMotionSamples(frameDiffs);
+        const liveness = validateGrayscaleMotionSequence(grayFrames);
+
         if (!liveness.passed) {
           throw new Error(
             liveness.reason || "Live video required — static photos are not accepted."
@@ -123,11 +153,11 @@ export function MotionLivenessCapture({
         }
         if (frameJpegs.length < MIN_PIXEL_MOTION_FRAMES) {
           throw new Error(
-            "Not enough live frames captured — keep your face in view and move your head slowly."
+            "Not enough live frames captured — keep your face in view and turn your head slowly."
           );
         }
 
-        const blob = await captureJpegFromVideo(video);
+        const blob = await captureJpegFromVideo(video, 480);
         stopCamera();
         setProcessing(false);
         setProgress("");
@@ -148,15 +178,13 @@ export function MotionLivenessCapture({
       }
 
       const current = sampleVideoGrayscale(video);
-      if (current && previousGray) {
-        frameDiffs.push(grayscaleFrameDiff(previousGray, current));
-      }
-      if (current) previousGray = current;
+      if (current) grayFrames.push(current);
 
-      pendingJpegs.push(captureJpegFromVideo(video, 240));
+      pendingJpegs.push(captureJpegFromVideo(video, 200));
 
+      const phase = elapsed < RECORD_MS * 0.35 ? "start" : elapsed < RECORD_MS * 0.7 ? "mid" : "end";
       const pct = Math.min(100, Math.round((elapsed / RECORD_MS) * 100));
-      setProgress(`Recording… ${pct}% — move your head slowly`);
+      setProgress(`${challengeHint(challengeRef.current, phase)} (${pct}%)`);
     }, SAMPLE_MS);
   };
 
@@ -178,7 +206,7 @@ export function MotionLivenessCapture({
         )}
       </div>
 
-      <p className="text-muted-foreground text-center text-sm">{hint}</p>
+      <p className="text-muted-foreground text-center text-sm">{defaultHint}</p>
       {error && <p className="text-destructive text-center text-sm">{error}</p>}
 
       <Button
@@ -190,6 +218,10 @@ export function MotionLivenessCapture({
         <Video className="mr-2 h-4 w-4" />
         {recording ? "Recording…" : processing ? "Checking…" : "Record live check (4s)"}
       </Button>
+
+      <p className="text-muted-foreground text-center text-xs">
+        Lightweight check — works on 4 GB RAM PCs. Shaking a photo at the camera will not pass.
+      </p>
     </div>
   );
 }

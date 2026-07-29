@@ -54,7 +54,7 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
   const [online, setOnline] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [resultMessage, setResultMessage] = useState("");
-  const [providerMode, setProviderMode] = useState<"local" | "didit" | "aws">("local");
+  const [providerMode, setProviderMode] = useState<"local" | "didit" | "faceplusplus">("local");
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [qrToken, setQrToken] = useState<string | null>(null);
   const [qrSecondsLeft, setQrSecondsLeft] = useState(60);
@@ -78,7 +78,7 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
       .then((r) => r.json())
       .then((d: { provider?: string }) => {
         const provider =
-          d.provider === "didit" || d.provider === "aws" || d.provider === "local"
+          d.provider === "didit" || d.provider === "faceplusplus" || d.provider === "local"
             ? d.provider
             : "local";
         setProviderMode(provider);

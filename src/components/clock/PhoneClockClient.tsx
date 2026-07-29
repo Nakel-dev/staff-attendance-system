@@ -6,12 +6,12 @@ import { CheckCircle2, Loader2, ScanFace, Timer } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AwsPhoneClockCapture } from "@/components/clock/AwsPhoneClockCapture";
 import { LocalPhoneClockCapture } from "@/components/clock/LocalPhoneClockCapture";
+import { MotionLivenessCapture } from "@/components/face/MotionLivenessCapture";
 import { appendMotionFrames } from "@/lib/face/motion-upload";
 import { fetchWithTimeout } from "@/lib/utils/fetch-with-timeout";
 
-type Provider = "local" | "aws" | "didit";
+type Provider = "local" | "faceplusplus" | "didit";
 
 type ChallengeInfo = {
   status: string;
@@ -24,7 +24,6 @@ type ChallengeInfo = {
   organizationName: string;
   kioskName: string;
   provider: Provider;
-  awsLiveness?: boolean;
 };
 
 const DIDIT_KEY = (token: string) => `phone_clock_didit:${token}`;
@@ -154,18 +153,15 @@ export function PhoneClockClient({ token }: { token: string }) {
     }
   };
 
-  const submitAws = async (payload: {
-    photoBytes?: Blob;
-    motionScore?: number;
-    livenessSessionId?: string;
-    frameJpegs?: Blob[];
+  const submitFacePlusPlus = async (payload: {
+    blob: Blob;
+    frameJpegs: Blob[];
   }) => {
     setSubmitting(true);
     try {
       const form = new FormData();
-      if (payload.photoBytes) form.append("file", payload.photoBytes, "selfie.jpg");
-      if (payload.livenessSessionId) form.append("livenessSessionId", payload.livenessSessionId);
-      if (payload.frameJpegs?.length) appendMotionFrames(form, payload.frameJpegs);
+      form.append("file", payload.blob, "selfie.jpg");
+      appendMotionFrames(form, payload.frameJpegs);
       const res = await fetchWithTimeout(`/api/clock/${token}/complete`, {
         method: "POST",
         body: form,
@@ -296,24 +292,33 @@ export function PhoneClockClient({ token }: { token: string }) {
               Start face check
             </Button>
           </div>
-        ) : (
+        ) : challenge.provider === "faceplusplus" ? (
           <div className="space-y-2">
             <p className="text-muted-foreground text-center text-sm">
-              {challenge.provider === "aws"
-                ? "Take a live selfie. We match it to your signup photo."
-                : "Capture your face. We match it to your signup enrollment."}
+              Record a short live clip. We match it to your portal verification photo.
             </p>
             {submitting ? (
               <div className="flex justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin" />
               </div>
-            ) : challenge.provider === "aws" ? (
-              <AwsPhoneClockCapture
-                token={token}
-                awsLivenessEnabled={challenge.awsLiveness}
+            ) : (
+              <MotionLivenessCapture
                 disabled={submitting}
-                onSubmit={submitAws}
+                onVerified={(result) =>
+                  void submitFacePlusPlus({ blob: result.blob, frameJpegs: result.frameJpegs })
+                }
               />
+            )}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-muted-foreground text-center text-sm">
+              Capture your face. We match it to your portal enrollment.
+            </p>
+            {submitting ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
             ) : (
               <LocalPhoneClockCapture
                 disabled={submitting}

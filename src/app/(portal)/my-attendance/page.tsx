@@ -51,8 +51,8 @@ export default async function MyAttendancePage() {
       <div>
         <h2 className="text-2xl font-bold tracking-tight">My Attendance</h2>
         <p className="text-muted-foreground">
-          View kiosk attendance history. Upload photo and verify with Didit under Profile — clock
-          in/out is only at the reception kiosk.
+          View your clock history. Check in and out at the reception kiosk using your staff ID and
+          face verification.
         </p>
       </div>
       <StaffPortalQuickLinks />

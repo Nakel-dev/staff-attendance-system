@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { isDiditConfigured } from "@/lib/didit/client";
-import { isFacePlusPlusConfigured } from "@/lib/faceplusplus/client";
+import { verifyFacePlusPlusAccess } from "@/lib/faceplusplus/client";
 
-/** Admin-facing: which biometric backends are configured on this deployment. */
+/** Admin: verify Face++ env + API reachability. */
 export async function GET() {
   const supabase = await createClient();
   const {
@@ -18,12 +17,16 @@ export async function GET() {
     .single();
 
   if (profile?.role !== "admin") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const verification = await verifyFacePlusPlusAccess();
+
   return NextResponse.json({
-    local: true,
-    didit: isDiditConfigured(),
-    faceplusplus: isFacePlusPlusConfigured(),
+    configured: Boolean(process.env.FACEPP_API_KEY && process.env.FACEPP_API_SECRET),
+    ok: verification.ok,
+    baseUrl: verification.baseUrl,
+    confidenceThreshold: verification.threshold,
+    message: verification.message,
   });
 }

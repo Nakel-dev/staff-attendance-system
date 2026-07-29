@@ -1,5 +1,5 @@
 export type AttendanceMode = "trust" | "standard" | "strict" | "admin_only";
-export type BiometricProvider = "local" | "didit" | "aws";
+export type BiometricProvider = "local" | "didit" | "faceplusplus";
 export type CheckInMethod = "self" | "admin" | "qr" | "kiosk";
 export type Role = "admin" | "staff";
 export type AttendanceStatus = "present" | "absent" | "late" | "half-day";

@@ -125,7 +125,7 @@ export async function getOrganizationSettings() {
         .eq("id", auth.profile.organization_id)
         .single();
       org = fallback.data
-        ? { ...fallback.data, biometric_provider: "aws" }
+        ? { ...fallback.data, biometric_provider: "faceplusplus" }
         : null;
       error = fallback.error;
     }
@@ -134,7 +134,7 @@ export async function getOrganizationSettings() {
     return {
       organization: {
         ...org,
-        biometric_provider: org.biometric_provider || "aws",
+        biometric_provider: org.biometric_provider || "faceplusplus",
       },
     };
   } catch (err) {
@@ -151,7 +151,7 @@ export async function updateAttendanceSecuritySettings(input: {
   requireFaceMatch: boolean;
   requireGeofence: boolean;
   requireQrCode: boolean;
-  biometricProvider: "local" | "didit" | "aws";
+  biometricProvider: "local" | "didit" | "faceplusplus";
 }) {
   try {
     const auth = await requireOrgAdmin();
@@ -168,7 +168,7 @@ export async function updateAttendanceSecuritySettings(input: {
       return { error: "Office location is required when geofence verification is enabled" };
     }
 
-    if (!["local", "didit", "aws"].includes(input.biometricProvider)) {
+    if (!["local", "didit", "faceplusplus"].includes(input.biometricProvider)) {
       return { error: "Invalid biometric provider" };
     }
 

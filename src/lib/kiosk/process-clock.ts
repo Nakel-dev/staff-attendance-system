@@ -5,9 +5,9 @@ import {
   isDiditConfigured,
 } from "@/lib/didit/client";
 import {
-  compareStoredPhotosAws,
-  isAwsRekognitionConfigured,
-} from "@/lib/aws/rekognition";
+  compareFacesFacePlusPlus,
+  isFacePlusPlusConfigured,
+} from "@/lib/faceplusplus/client";
 import { normalizeBiometricProvider } from "@/lib/biometrics/providers";
 import type { KioskSessionContext } from "@/lib/kiosk/session";
 
@@ -17,6 +17,7 @@ export type ReviewReason =
   | "missing_photo"
   | "duplicate_day"
   | "photo_review"
+  | "video_review"
   | "low_confidence"
   | "no_match"
   | "liveness_fail";
@@ -119,6 +120,7 @@ async function enqueueReview(
     missing_photo: "No photo captured. Sent for admin review.",
     duplicate_day: "Already clocked this action today. Sent for admin review.",
     photo_review: "No profile photo on file. Sent for admin review.",
+    video_review: "Verification video saved for admin review.",
     low_confidence: "Needs manual review.",
     no_match: "Needs manual review.",
     liveness_fail: "Needs manual review.",
@@ -210,18 +212,18 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
   }
 
   const diditEnabled = isDiditConfigured();
-  const awsEnabled = isAwsRekognitionConfigured();
+  const faceppEnabled = isFacePlusPlusConfigured();
   const provider = normalizeBiometricProvider(org?.biometric_provider);
   const useDidit = provider === "didit" && diditEnabled;
-  const useAws = provider === "aws" && awsEnabled;
+  const useFacepp = provider === "faceplusplus" && faceppEnabled;
 
-  if (provider === "aws" && !awsEnabled) {
-    await logAttempt(input, "liveness_fail", { reason: "aws_not_configured" });
+  if (provider === "faceplusplus" && !faceppEnabled) {
+    await logAttempt(input, "liveness_fail", { reason: "faceplusplus_not_configured" });
     return {
       success: false,
       status: "rejected",
       message:
-        "AWS Rekognition is not configured on the server. Ask your admin to add AWS keys on Vercel and redeploy.",
+        "Face++ is not configured on the server. Ask your admin to add FACEPP_API_KEY and FACEPP_API_SECRET.",
     };
   }
 
@@ -326,7 +328,7 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
     };
   }
 
-  if (useAws) {
+  if (useFacepp) {
     if (!staff.avatar_url) {
       return enqueueReview(input, "photo_review", staff);
     }
@@ -335,15 +337,24 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
     }
 
     try {
-      const comparison = await compareStoredPhotosAws({
-        sourceAvatarPath: staff.avatar_url,
-        targetCapturePath: input.photoCaptureUrl,
+      const [profileDl, snapDl] = await Promise.all([
+        admin.storage.from("profile-photos").download(staff.avatar_url),
+        admin.storage.from("kiosk-attendance-photos").download(input.photoCaptureUrl),
+      ]);
+
+      if (!profileDl.data || !snapDl.data) {
+        return enqueueReview(input, "missing_photo", staff);
+      }
+
+      const comparison = await compareFacesFacePlusPlus({
+        referenceImageBytes: new Uint8Array(await profileDl.data.arrayBuffer()),
+        liveImageBytes: new Uint8Array(await snapDl.data.arrayBuffer()),
       });
 
       if (!comparison.matched) {
         return enqueueReview(input, "no_match", staff, {
-          provider: "aws",
-          similarity: comparison.similarity,
+          provider: "faceplusplus",
+          confidence: comparison.confidence,
         });
       }
 
@@ -355,7 +366,7 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
           type: input.attemptType,
           match_status: "auto_matched",
           liveness_passed: true,
-          confidence_score: comparison.similarity,
+          confidence_score: comparison.confidence,
           photo_capture_url: input.photoCaptureUrl,
           kiosk_device_id: input.session.kioskId,
         })
@@ -371,8 +382,8 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
 
       await logAttempt(input, "success", {
         recordId: record.id,
-        provider: "aws",
-        similarity: comparison.similarity,
+        provider: "faceplusplus",
+        confidence: comparison.confidence,
       });
 
       return {
@@ -380,14 +391,14 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
         status: "clocked",
         message:
           input.attemptType === "check_in"
-            ? "AWS face match passed. Checked in successfully."
-            : "AWS face match passed. Checked out successfully.",
+            ? "Face++ match passed. Checked in successfully."
+            : "Face++ match passed. Checked out successfully.",
         recordId: record.id,
       };
     } catch (err) {
       await logAttempt(input, "no_match", {
-        provider: "aws",
-        error: err instanceof Error ? err.message : "aws_compare_failed",
+        provider: "faceplusplus",
+        error: err instanceof Error ? err.message : "faceplusplus_compare_failed",
       });
       return {
         success: false,
@@ -395,7 +406,7 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
         message:
           err instanceof Error
             ? err.message
-            : "AWS face verification failed. Try again or contact admin.",
+            : "Face++ verification failed. Try again or contact admin.",
       };
     }
   }
@@ -478,6 +489,13 @@ export async function resolveReviewQueueItem(
       })
       .eq("id", reviewId);
 
+    if (review.attendance_record_id) {
+      await admin
+        .from("attendance_records")
+        .update({ match_status: "rejected" })
+        .eq("id", review.attendance_record_id);
+    }
+
     await admin.from("clock_attempts").insert({
       organization_id: review.organization_id,
       kiosk_id: review.kiosk_device_id,
@@ -488,6 +506,33 @@ export async function resolveReviewQueueItem(
     });
 
     return { success: true, status: "rejected" as const };
+  }
+
+  if (review.attendance_record_id) {
+    await admin
+      .from("attendance_records")
+      .update({
+        match_status: "manual_override",
+        liveness_passed: true,
+        reviewed_by: adminProfileId,
+      })
+      .eq("id", review.attendance_record_id);
+
+    await admin
+      .from("review_queue")
+      .update({
+        status: "approved",
+        reviewed_by: adminProfileId,
+        reviewed_at: new Date().toISOString(),
+        attendance_record_id: review.attendance_record_id,
+      })
+      .eq("id", reviewId);
+
+    return {
+      success: true,
+      status: "approved" as const,
+      recordId: review.attendance_record_id,
+    };
   }
 
   const { data: record, error } = await admin

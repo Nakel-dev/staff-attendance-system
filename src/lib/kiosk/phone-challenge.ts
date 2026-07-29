@@ -4,21 +4,17 @@ import { randomBytes } from "crypto";
 import type { KioskSessionContext } from "@/lib/kiosk/session";
 import type { ClockAttemptType } from "@/lib/kiosk/process-clock";
 import {
-  compareFacesAws,
-  isAwsRekognitionConfigured,
-} from "@/lib/aws/rekognition";
+  getDiditSessionDecision,
+  isDiditConfigured,
+} from "@/lib/didit/client";
 import {
-  getFaceLivenessSessionResults,
-  isAwsFaceLivenessConfigured,
-} from "@/lib/aws/face-liveness";
+  compareFacesFacePlusPlus,
+  isFacePlusPlusConfigured,
+} from "@/lib/faceplusplus/client";
 import {
   motionValidationErrorMessage,
   validateMotionFromJpegBuffers,
 } from "@/lib/face/server-pixel-motion";
-import {
-  getDiditSessionDecision,
-  isDiditConfigured,
-} from "@/lib/didit/client";
 import { normalizeBiometricProvider } from "@/lib/biometrics/providers";
 import { matchAgainstEmbeddings } from "@/lib/kiosk/face-match";
 import { FACE_MATCH_THRESHOLD, isValidFaceDescriptor } from "@/lib/utils/faceMatch";
@@ -141,7 +137,7 @@ export async function getPhoneChallengePublic(token: string) {
     .single();
 
   const provider = normalizeBiometricProvider(org?.biometric_provider);
-  const awsOk = isAwsRekognitionConfigured();
+  const faceppOk = isFacePlusPlusConfigured();
   const diditOk = isDiditConfigured();
 
   return {
@@ -160,8 +156,11 @@ export async function getPhoneChallengePublic(token: string) {
       kioskName: kiosk?.device_name || "Reception kiosk",
       provider,
       providerReady:
-        provider === "aws" ? awsOk : provider === "didit" ? diditOk : true,
-      awsLiveness: isAwsFaceLivenessConfigured(),
+        provider === "faceplusplus"
+          ? faceppOk
+          : provider === "didit"
+            ? diditOk
+            : true,
     },
   };
 }
@@ -258,12 +257,12 @@ export async function completePhoneClockChallenge(input: {
     .single();
 
   const provider = normalizeBiometricProvider(org?.biometric_provider);
-  if (provider === "aws" && !isAwsRekognitionConfigured()) {
-    await failChallenge(challenge.id, "AWS not configured on server");
+  if (provider === "faceplusplus" && !isFacePlusPlusConfigured()) {
+    await failChallenge(challenge.id, "Face++ not configured on server");
     return {
       success: false,
       message:
-        "AWS Rekognition is not configured on the server. Ask your admin to add AWS keys on Vercel.",
+        "Face++ is not configured on the server. Ask your admin to add FACEPP_API_KEY and FACEPP_API_SECRET.",
     };
   }
   if (provider === "didit" && !isDiditConfigured()) {
@@ -293,49 +292,42 @@ export async function completePhoneClockChallenge(input: {
     }
     confidence = decision.faceMatchScore ?? null;
     livenessPassed = true;
-  } else if (provider === "aws") {
-    let targetBytes = input.photoBytes;
-
-    if (input.livenessSessionId?.trim()) {
-      const liveness = await getFaceLivenessSessionResults(input.livenessSessionId.trim());
-      if (!liveness.passed) {
-        await failChallenge(challenge.id, `AWS liveness ${liveness.confidence}`);
-        return {
-          success: false,
-          message: `Live face check failed (${liveness.confidence.toFixed(0)}% confidence). Try again.`,
-        };
-      }
-      if (!liveness.referenceImageBytes?.byteLength) {
-        await failChallenge(challenge.id, "AWS liveness missing reference image");
-        return { success: false, message: "Live face check failed. Try again." };
-      }
-      targetBytes = liveness.referenceImageBytes;
-    } else {
-      const motion = validateMotionFromJpegBuffers(input.motionFrameBuffers || []);
-      if (!motion.passed) {
-        await failChallenge(challenge.id, "missing_motion_liveness");
-        return {
-          success: false,
-          message: motion.reason || motionValidationErrorMessage(),
-        };
-      }
+  } else if (provider === "faceplusplus") {
+    const motion = validateMotionFromJpegBuffers(input.motionFrameBuffers || []);
+    if (!motion.passed) {
+      await failChallenge(challenge.id, "missing_motion_liveness");
+      return {
+        success: false,
+        message: motion.reason || motionValidationErrorMessage(),
+      };
     }
 
+    const targetBytes = input.photoBytes;
     if (!targetBytes?.byteLength) {
       return { success: false, message: "Take a live selfie to continue." };
     }
-    const comparison = await compareFacesAws({
-      sourceAvatarPath: staff.avatar_url,
-      targetImageBytes: targetBytes,
+
+    const { data: profilePhoto } = await admin.storage
+      .from("profile-photos")
+      .download(staff.avatar_url);
+
+    if (!profilePhoto) {
+      await failChallenge(challenge.id, "missing_profile_photo");
+      return { success: false, message: "Could not load your profile photo." };
+    }
+
+    const comparison = await compareFacesFacePlusPlus({
+      referenceImageBytes: new Uint8Array(await profilePhoto.arrayBuffer()),
+      liveImageBytes: targetBytes,
     });
     if (!comparison.matched) {
-      await failChallenge(challenge.id, `AWS similarity ${comparison.similarity}`);
+      await failChallenge(challenge.id, `Face++ ${comparison.confidence}`);
       return {
         success: false,
-        message: `Face did not match your signup photo (${comparison.similarity.toFixed(0)}%). Try better lighting.`,
+        message: `Face did not match your portal verification (${comparison.confidence.toFixed(0)}%). Try better lighting.`,
       };
     }
-    confidence = comparison.similarity;
+    confidence = comparison.confidence;
     photoPath = await storePhoneCapture(challenge.staff_id, targetBytes);
   } else {
     // local: server-validated motion + match live descriptor against enrollment

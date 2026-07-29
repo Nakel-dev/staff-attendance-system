@@ -12,7 +12,10 @@ interface ReviewItem {
   attempt_type: string;
   reason: string;
   live_capture_url: string | null;
+  confidence_score?: number | null;
+  frame_metadata?: { faceplusplus?: { confidence?: number; matched?: boolean } };
   liveCaptureSignedUrl?: string;
+  livenessClipSignedUrl?: string;
   storedReferenceSignedUrl?: string;
   created_at: string;
   profiles?: { full_name?: string; employee_code?: string; department?: string };
@@ -25,6 +28,7 @@ const REASON_LABELS: Record<string, string> = {
   low_confidence: "Low confidence",
   no_match: "No match",
   liveness_fail: "Liveness failed",
+  video_review: "Portal QR — verify 3s video",
 };
 
 export function ReviewQueuePanel() {
@@ -92,11 +96,33 @@ export function ReviewQueuePanel() {
             <p className="text-muted-foreground text-sm">
               {item.profiles?.employee_code || "—"} · {item.profiles?.department || "—"}
             </p>
-            {(item.liveCaptureSignedUrl || item.storedReferenceSignedUrl) && (
+            {item.confidence_score != null && (
+              <p className="text-sm">
+                Face++ match:{" "}
+                <span
+                  className={
+                    item.confidence_score >= 70
+                      ? "font-medium text-green-700 dark:text-green-400"
+                      : "font-medium text-amber-700 dark:text-amber-400"
+                  }
+                >
+                  {item.confidence_score.toFixed(1)}%
+                </span>
+              </p>
+            )}
+            {(item.liveCaptureSignedUrl || item.livenessClipSignedUrl || item.storedReferenceSignedUrl) && (
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <p className="text-sm font-medium">Kiosk capture</p>
-                  {item.liveCaptureSignedUrl ? (
+                  <p className="text-sm font-medium">Kiosk verification</p>
+                  {item.livenessClipSignedUrl ? (
+                    // eslint-disable-next-line jsx-a11y/media-has-caption
+                    <video
+                      src={item.livenessClipSignedUrl}
+                      controls
+                      playsInline
+                      className="aspect-[4/3] w-full rounded-md border bg-black object-cover"
+                    />
+                  ) : item.liveCaptureSignedUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={item.liveCaptureSignedUrl}
@@ -104,7 +130,7 @@ export function ReviewQueuePanel() {
                       className="aspect-[4/3] w-full rounded-md border object-cover"
                     />
                   ) : (
-                    <p className="text-muted-foreground text-sm">No photo captured</p>
+                    <p className="text-muted-foreground text-sm">No capture uploaded</p>
                   )}
                 </div>
                 <div className="space-y-2">

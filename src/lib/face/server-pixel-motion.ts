@@ -1,11 +1,11 @@
 import jpeg from "jpeg-js";
-import { grayscaleFrameDiff } from "@/lib/face/pixel-motion";
 import {
-  MIN_PIXEL_MOTION_FRAMES,
-  validatePixelMotionSamples,
-} from "@/lib/face/liveness";
+  MOTION_SAMPLE_SIZE,
+  validateGrayscaleMotionSequence,
+} from "@/lib/face/motion-analysis";
+import { MIN_PIXEL_MOTION_FRAMES } from "@/lib/face/liveness";
 
-const SAMPLE_SIZE = 96;
+const SAMPLE_SIZE = MOTION_SAMPLE_SIZE;
 
 function rgbaToGrayscaleSample(
   rgba: Uint8Array,
@@ -44,14 +44,9 @@ export function validateMotionFromJpegBuffers(buffers: Buffer[]) {
     if (gray) grays.push(gray);
   }
 
-  const frameDiffs: number[] = [];
-  for (let i = 1; i < grays.length; i++) {
-    frameDiffs.push(grayscaleFrameDiff(grays[i - 1], grays[i]));
-  }
-
-  return validatePixelMotionSamples(frameDiffs);
+  return validateGrayscaleMotionSequence(grays);
 }
 
 export function motionValidationErrorMessage(): string {
-  return `Live video required — static photos and phone screens are not accepted. Record the live check and move your head slowly (${MIN_PIXEL_MOTION_FRAMES}+ frames with visible motion).`;
+  return `Live video required — turn your head slowly left and right. Static photos and phone-shake spoofing are rejected (${MIN_PIXEL_MOTION_FRAMES}+ frames with visible head movement).`;
 }
