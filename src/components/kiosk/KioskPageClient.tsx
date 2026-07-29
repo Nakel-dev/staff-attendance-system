@@ -6,17 +6,19 @@ import { KioskSetupForm } from "@/components/kiosk/KioskSetupForm";
 import { KioskFaceClockApp } from "@/components/kiosk/KioskFaceClockApp";
 import type { Profile } from "@/lib/types";
 
+type KioskStaffRow = Pick<Profile, "id" | "full_name" | "department" | "employee_code"> & {
+  nextAttempt: "check_in" | "check_out";
+};
+
 export function KioskPageClient() {
   const [deviceName, setDeviceName] = useState<string | null>(null);
-  const [staff, setStaff] = useState<Pick<Profile, "id" | "full_name" | "department" | "employee_code">[]>(
-    []
-  );
+  const [staff, setStaff] = useState<KioskStaffRow[]>([]);
   const [booting, setBooting] = useState(true);
 
   const loadStaff = () =>
     fetch("/api/kiosk/staff-list")
       .then((r) => r.json())
-      .then((d: { staff?: typeof staff }) => setStaff(d.staff || []));
+      .then((d: { staff?: KioskStaffRow[] }) => setStaff(d.staff || []));
 
   useEffect(() => {
     void (async () => {
@@ -53,7 +55,7 @@ export function KioskPageClient() {
 
   return (
     <div className="min-h-screen bg-background">
-      <KioskFaceClockApp staff={staff} deviceName={deviceName} />
+      <KioskFaceClockApp staff={staff} deviceName={deviceName} onStaffRefresh={loadStaff} />
     </div>
   );
 }

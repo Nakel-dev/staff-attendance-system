@@ -9,18 +9,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Profile } from "@/lib/types";
 
 type Step = "identify" | "verify" | "done";
+type ListMode = "check_in" | "check_out";
+
+type KioskStaffRow = Pick<Profile, "id" | "full_name" | "department" | "employee_code"> & {
+  nextAttempt: ListMode;
+  lastType?: string | null;
+};
 
 interface KioskFaceClockAppProps {
-  staff: Pick<Profile, "id" | "full_name" | "department" | "employee_code">[];
+  staff: KioskStaffRow[];
   deviceName: string;
+  onStaffRefresh?: () => void | Promise<void>;
 }
 
 /** Reception kiosk: staff ID → Didit verification every clock in/out. */
-export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps) {
+export function KioskFaceClockApp({ staff, deviceName, onStaffRefresh }: KioskFaceClockAppProps) {
   const [query, setQuery] = useState("");
   const [employeeCode, setEmployeeCode] = useState("");
-  const [selected, setSelected] = useState<(typeof staff)[0] | null>(null);
-  const [attemptType, setAttemptType] = useState<"check_in" | "check_out">("check_in");
+  const [listMode, setListMode] = useState<ListMode>("check_in");
+  const [selected, setSelected] = useState<KioskStaffRow | null>(null);
   const [step, setStep] = useState<Step>("identify");
   const [processing, setProcessing] = useState(false);
   const [online, setOnline] = useState(true);
@@ -28,6 +35,8 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
   const [diditEnabled, setDiditEnabled] = useState(false);
   const [diditUrl, setDiditUrl] = useState<string | null>(null);
   const [diditSessionId, setDiditSessionId] = useState<string | null>(null);
+
+  const attemptType = listMode;
 
   useEffect(() => {
     void fetch("/api/kiosk/face-clock/config")
@@ -44,25 +53,33 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
     return () => window.removeEventListener("offline", sync);
   }, []);
 
+  const eligibleStaff = useMemo(
+    () => staff.filter((s) => s.nextAttempt === listMode),
+    [staff, listMode]
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return staff;
-    return staff.filter(
+    if (!q) return eligibleStaff;
+    return eligibleStaff.filter(
       (s) =>
         s.full_name.toLowerCase().includes(q) ||
         (s.employee_code || "").toLowerCase().includes(q) ||
         s.department.toLowerCase().includes(q)
     );
-  }, [query, staff]);
+  }, [query, eligibleStaff]);
 
-  const pickStaff = async (member: (typeof staff)[0]) => {
+  const pickStaff = (member: KioskStaffRow) => {
+    if (member.nextAttempt !== listMode) {
+      toast.error(
+        member.nextAttempt === "check_out"
+          ? `${member.full_name} already checked in — use Check out list.`
+          : `${member.full_name} is not checked in — use Check in list.`
+      );
+      return;
+    }
     setSelected(member);
     setEmployeeCode(member.employee_code || "");
-    const res = await fetch(`/api/kiosk/staff-status?staffId=${member.id}`);
-    if (res.ok) {
-      const data = (await res.json()) as { nextAttempt?: "check_in" | "check_out" };
-      setAttemptType(data.nextAttempt || "check_in");
-    }
     setStep("verify");
   };
 
@@ -77,7 +94,15 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
       toast.error("Staff ID not found");
       return;
     }
-    void pickStaff(member);
+    if (member.nextAttempt !== listMode) {
+      toast.error(
+        listMode === "check_in"
+          ? "This staff member already checked in. Switch to Check out."
+          : "This staff member is not checked in. Switch to Check in."
+      );
+      return;
+    }
+    pickStaff(member);
   };
 
   const startDidit = useCallback(async () => {
@@ -136,6 +161,7 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
             setResultMessage(result.message || "Clock recorded via Didit.");
             setStep("done");
             toast.success(result.message);
+            void onStaffRefresh?.();
           } else {
             toast.error(result.message || "Clock failed");
             setStep("identify");
@@ -151,7 +177,7 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
     }, 2500);
 
     return () => clearInterval(interval);
-  }, [attemptType, diditSessionId, selected, step]);
+  }, [attemptType, diditSessionId, onStaffRefresh, selected, step]);
 
   const reset = () => {
     setSelected(null);
@@ -163,6 +189,8 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
     setDiditSessionId(null);
   };
 
+  const listLabel = listMode === "check_in" ? "Check in" : "Check out";
+
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-4">
       <div className="flex items-center justify-between">
@@ -170,7 +198,7 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
           <h1 className="text-2xl font-bold">Reception Kiosk</h1>
           <p className="text-muted-foreground text-sm">{deviceName}</p>
           <p className="text-muted-foreground text-xs">
-            Staff ID → Didit verification every {diditEnabled ? "check-in/out" : "clock (Didit not configured)"}
+            {listLabel} list → Didit verification · {eligibleStaff.length} staff eligible
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm">
@@ -182,9 +210,35 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
       {step === "identify" && (
         <Card>
           <CardHeader>
-            <CardTitle>Enter staff ID</CardTitle>
+            <CardTitle>{listLabel}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex justify-center gap-2">
+              <Button
+                size="sm"
+                variant={listMode === "check_in" ? "default" : "outline"}
+                onClick={() => {
+                  setListMode("check_in");
+                  setQuery("");
+                  setEmployeeCode("");
+                }}
+              >
+                <LogIn className="mr-1 h-4 w-4" />
+                Check in ({staff.filter((s) => s.nextAttempt === "check_in").length})
+              </Button>
+              <Button
+                size="sm"
+                variant={listMode === "check_out" ? "default" : "outline"}
+                onClick={() => {
+                  setListMode("check_out");
+                  setQuery("");
+                  setEmployeeCode("");
+                }}
+              >
+                <LogOut className="mr-1 h-4 w-4" />
+                Check out ({staff.filter((s) => s.nextAttempt === "check_out").length})
+              </Button>
+            </div>
             <div className="flex gap-2">
               <Input
                 placeholder="e.g. EMP-0042"
@@ -194,7 +248,9 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
               />
               <Button onClick={pickByCode}>Continue</Button>
             </div>
-            <p className="text-muted-foreground text-center text-xs">or search by name</p>
+            <p className="text-muted-foreground text-center text-xs">
+              Only staff who need to {listMode === "check_in" ? "check in" : "check out"} are shown
+            </p>
             <div className="relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
@@ -205,17 +261,23 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
               />
             </div>
             <div className="max-h-64 space-y-2 overflow-y-auto">
-              {filtered.map((member) => (
-                <button
-                  key={member.id}
-                  type="button"
-                  onClick={() => void pickStaff(member)}
-                  className="flex w-full items-center justify-between rounded-lg border p-3 text-left hover:bg-accent"
-                >
-                  <span>{member.full_name}</span>
-                  <span className="text-muted-foreground text-sm">{member.employee_code || "—"}</span>
-                </button>
-              ))}
+              {filtered.length === 0 ? (
+                <p className="text-muted-foreground py-6 text-center text-sm">
+                  No one needs to {listMode === "check_in" ? "check in" : "check out"} right now.
+                </p>
+              ) : (
+                filtered.map((member) => (
+                  <button
+                    key={member.id}
+                    type="button"
+                    onClick={() => pickStaff(member)}
+                    className="flex w-full items-center justify-between rounded-lg border p-3 text-left hover:bg-accent"
+                  >
+                    <span>{member.full_name}</span>
+                    <span className="text-muted-foreground text-sm">{member.employee_code || "—"}</span>
+                  </button>
+                ))
+              )}
             </div>
           </CardContent>
         </Card>
@@ -227,24 +289,6 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
             <CardTitle>{selected.full_name}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex justify-center gap-2">
-              <Button
-                size="sm"
-                variant={attemptType === "check_in" ? "default" : "outline"}
-                onClick={() => setAttemptType("check_in")}
-              >
-                <LogIn className="mr-1 h-4 w-4" />
-                Check in
-              </Button>
-              <Button
-                size="sm"
-                variant={attemptType === "check_out" ? "default" : "outline"}
-                onClick={() => setAttemptType("check_out")}
-              >
-                <LogOut className="mr-1 h-4 w-4" />
-                Check out
-              </Button>
-            </div>
             <p className="text-muted-foreground text-center text-sm">
               Verify with Didit to {attemptType === "check_in" ? "check in" : "check out"}.
             </p>
