@@ -23,9 +23,9 @@ export default async function SettingsPage() {
         <h2 className="text-lg font-semibold">Could not load settings</h2>
         <p className="text-sm text-muted-foreground">{settings.error}</p>
         <p className="text-sm text-muted-foreground">
-          If you just added biometric providers, run{" "}
-          <code className="rounded bg-muted px-1">013_biometric_provider.sql</code> in the Supabase
-          SQL Editor, then refresh this page.
+          If face verification settings fail to save, run{" "}
+          <code className="rounded bg-muted px-1">018_biometric_provider_setup.sql</code> in the
+          Supabase SQL Editor, then refresh this page.
         </p>
       </div>
     );

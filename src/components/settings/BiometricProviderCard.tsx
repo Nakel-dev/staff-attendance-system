@@ -38,9 +38,13 @@ interface BiometricProviderCardProps {
 }
 
 export function BiometricProviderCard({ organization }: BiometricProviderCardProps) {
-  const [provider, setProvider] = useState<BiometricProvider>(
+  const [provider, setProvider] = useState<BiometricProvider>(() =>
     normalizeBiometricProvider(organization.biometric_provider)
   );
+
+  useEffect(() => {
+    setProvider(normalizeBiometricProvider(organization.biometric_provider));
+  }, [organization.biometric_provider]);
   const [availability, setAvailability] = useState({
     local: true,
     didit: false,
@@ -171,7 +175,9 @@ export function BiometricProviderCard({ organization }: BiometricProviderCardPro
               onValueChange={(value) => setProvider(value as BiometricProvider)}
             >
               <SelectTrigger id="biometric-provider" className="h-9 bg-background">
-                <SelectValue />
+                <SelectValue placeholder="Choose method">
+                  {BIOMETRIC_PROVIDER_LABELS[provider]}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {BIOMETRIC_PROVIDERS.map((option) => (

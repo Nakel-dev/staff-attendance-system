@@ -148,7 +148,7 @@ export function AttendanceSecuritySettings({ initial }: AttendanceSecuritySettin
             <Checkbox checked={requireVideo} onCheckedChange={(v) => setRequireVideo(!!v)} />
             <span>
               <span className="block text-sm font-medium">Live video liveness</span>
-              <span className="text-xs text-muted-foreground">Motion clip during AWS/local enrollment</span>
+              <span className="text-xs text-muted-foreground">Motion clip during portal face enrollment</span>
             </span>
           </label>
           <label className="flex items-start gap-3 rounded-lg border p-3">

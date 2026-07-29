@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveCheckInPolicy } from "@/lib/utils/securityPolicy";
 import { revalidatePath } from "next/cache";
+import { normalizeBiometricProvider } from "@/lib/biometrics/providers";
 import type { AttendanceMode } from "@/lib/types";
 
 function generateInviteCode() {
@@ -131,10 +132,23 @@ export async function getOrganizationSettings() {
     }
 
     if (error || !org) return { error: error?.message || "Organization not found" };
+    const biometricProvider = normalizeBiometricProvider(org.biometric_provider);
+
+    // Persist legacy "aws" → faceplusplus once migration 017 is applied.
+    if (org.biometric_provider === "aws" && biometricProvider === "faceplusplus") {
+      const { error: migrateError } = await admin
+        .from("organizations")
+        .update({ biometric_provider: "faceplusplus", updated_at: new Date().toISOString() })
+        .eq("id", auth.profile.organization_id);
+      if (migrateError && !/check constraint/i.test(migrateError.message)) {
+        console.warn("Could not migrate biometric_provider from aws:", migrateError.message);
+      }
+    }
+
     return {
       organization: {
         ...org,
-        biometric_provider: org.biometric_provider || "faceplusplus",
+        biometric_provider: biometricProvider,
       },
     };
   } catch (err) {
@@ -194,7 +208,7 @@ export async function updateAttendanceSecuritySettings(input: {
     if (error && /biometric_provider/i.test(error.message)) {
       return {
         error:
-          "Database is missing biometric_provider. Run migration 013_biometric_provider.sql in Supabase SQL Editor, then try again.",
+          "Database is missing biometric_provider. Run supabase/migrations/018_biometric_provider_setup.sql in the Supabase SQL Editor, then try again.",
       };
     }
 
