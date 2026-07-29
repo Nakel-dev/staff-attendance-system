@@ -1,5 +1,5 @@
 export const MIN_LIVENESS_FRAMES = 5;
-export const MIN_MOTION_SCORE = 0.035;
+export const MIN_MOTION_SCORE = 0.08;
 export const MAX_FRAME_DESCRIPTOR_DISTANCE = 0.45;
 export const MIN_LANDMARK_PIXEL_MOTION = 1.4;
 export const MAX_LANDMARK_FRAME_DISTANCE = 42;
@@ -77,8 +77,9 @@ export function validateLivenessLandmarkFrames(
   return { passed: true, motionScore };
 }
 
-export const MIN_PIXEL_FRAME_DIFF = 4;
-export const MIN_PIXEL_MOTION_FRAMES = 5;
+export const MIN_PIXEL_FRAME_DIFF = 7;
+export const MIN_PIXEL_MOTION_FRAMES = 6;
+export const MAX_MOTION_FRAME_UPLOADS = 16;
 
 /** Map average grayscale frame diff (0–255) to 0–1 for server checks. */
 export function normalizePixelMotionScore(avgDiff: number): number {

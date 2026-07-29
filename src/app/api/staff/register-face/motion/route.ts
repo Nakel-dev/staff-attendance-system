@@ -1,17 +1,12 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthenticatedProfile } from "@/lib/supabase/profile";
-import { MIN_MOTION_SCORE } from "@/lib/face/liveness";
+import { requireServerMotionValidation } from "@/lib/face/motion-upload";
 import { isValidFaceDescriptor } from "@/lib/utils/faceMatch";
 import { FACE_ANGLES, type FaceAngle } from "@/lib/kiosk/constants";
 
-const bodySchema = z.object({
-  motionScore: z.number().finite().min(MIN_MOTION_SCORE),
-});
-
-/** Local enrollment: motion liveness only — reuses face template from profile photo. */
+/** Local enrollment: server-validated motion + profile photo face template. */
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
@@ -30,15 +25,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const parsed = bodySchema.safeParse(await request.json());
-    if (!parsed.success) {
-      return NextResponse.json(
-        {
-          error:
-            "Live video required — static photos and phone screens are not accepted. Record the 3-second live check.",
-        },
-        { status: 422 }
-      );
+    const form = await request.formData();
+    const motion = await requireServerMotionValidation(form);
+    if (!motion.ok) {
+      return NextResponse.json({ error: motion.message }, { status: 422 });
     }
 
     const descriptor = profile.face_descriptor;
@@ -77,7 +67,7 @@ export async function POST(request: Request) {
       .update({
         face_descriptor: descriptor,
         face_enrolled_at: now,
-        face_liveness_score: parsed.data.motionScore,
+        face_liveness_score: motion.motionScore,
         updated_at: now,
       })
       .eq("id", profile.id);

@@ -16,6 +16,7 @@ type VerifyPhase = "idle" | "waiting" | "done";
 
 export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollment?: boolean }) {
   const [provider, setProvider] = useState<BiometricProvider>("aws");
+  const [awsLiveness, setAwsLiveness] = useState(false);
   const [providerReady, setProviderReady] = useState(true);
   const [setupHint, setSetupHint] = useState<string | null>(null);
   const [enrolled, setEnrolled] = useState(false);
@@ -39,6 +40,7 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
       setProvider(configRes.provider);
     }
     setProviderReady(configRes.ready !== false);
+    setAwsLiveness(configRes.awsLiveness === true);
     setSetupHint(typeof configRes.setupHint === "string" ? configRes.setupHint : null);
 
     if ("error" in status) {
@@ -327,6 +329,7 @@ export function FaceEnrollmentCard({ promptEnrollment = false }: { promptEnrollm
 
             {providerReady && showCapture && provider === "aws" && (
               <AwsFaceEnrollmentCapture
+                awsLivenessEnabled={awsLiveness}
                 disabled={processing}
                 onStop={() => setShowCapture(false)}
                 onSuccess={handleAwsEnrollmentSuccess}

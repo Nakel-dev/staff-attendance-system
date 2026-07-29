@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MotionLivenessCapture } from "@/components/face/MotionLivenessCapture";
+import { appendMotionFrames } from "@/lib/face/motion-upload";
 import { preloadRegistrationModels } from "@/lib/face/client";
 import { fetchWithTimeout } from "@/lib/utils/fetch-with-timeout";
 
-/** Local enrollment: fast motion check only (face template comes from profile photo). */
+/** Local enrollment: motion clip with server re-check (face template comes from profile photo). */
 export function LocalFaceEnrollmentCapture({
   onSuccess,
   onStop,
@@ -25,15 +26,21 @@ export function LocalFaceEnrollmentCapture({
     preloadRegistrationModels();
   }, []);
 
-  const completeEnrollment = async (motionScore: number) => {
+  const completeEnrollment = async (result: {
+    blob: Blob;
+    motionScore: number;
+    frameJpegs: Blob[];
+  }) => {
     setBusy(true);
     setStatus("Saving enrollment…");
     setError(null);
     try {
+      const form = new FormData();
+      form.append("file", result.blob, "live.jpg");
+      appendMotionFrames(form, result.frameJpegs);
       const res = await fetchWithTimeout("/api/staff/register-face/motion", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ motionScore }),
+        body: form,
         timeoutMs: 30000,
       });
       const data = (await res.json()) as { error?: string; enrolledAt?: string };
@@ -51,12 +58,12 @@ export function LocalFaceEnrollmentCapture({
       {!busy ? (
         <>
           <p className="text-muted-foreground text-center text-sm">
-            Record a short live clip. Your reference photo above is used for kiosk matching — no
-            heavy face scan here.
+            Record a short live clip. Motion is verified on the server — static photos are
+            rejected. Your reference photo above is used for kiosk matching.
           </p>
           <MotionLivenessCapture
             disabled={disabled}
-            onVerified={(result) => void completeEnrollment(result.motionScore)}
+            onVerified={(result) => void completeEnrollment(result)}
           />
         </>
       ) : (

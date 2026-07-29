@@ -8,14 +8,15 @@ import {
   grayscaleFrameDiff,
   sampleVideoGrayscale,
 } from "@/lib/face/pixel-motion";
-import { validatePixelMotionSamples } from "@/lib/face/liveness";
+import { validatePixelMotionSamples, MIN_PIXEL_MOTION_FRAMES } from "@/lib/face/liveness";
 
 export type MotionLivenessResult = {
   blob: Blob;
   motionScore: number;
+  frameJpegs: Blob[];
 };
 
-const RECORD_MS = 3000;
+const RECORD_MS = 3500;
 const SAMPLE_MS = 400;
 
 function waitForVideoFrame(video: HTMLVideoElement): Promise<void> {
@@ -33,7 +34,7 @@ function waitForVideoFrame(video: HTMLVideoElement): Promise<void> {
 export function MotionLivenessCapture({
   onVerified,
   disabled,
-  hint = "Center your face, then record for 3 seconds while slowly turning your head left and right.",
+  hint = "Center your face, then record for 3–4 seconds while slowly turning your head left and right.",
 }: {
   onVerified: (result: MotionLivenessResult) => void;
   disabled?: boolean;
@@ -96,6 +97,7 @@ export function MotionLivenessCapture({
     setProgress("Recording… 0% — move your head slowly");
 
     const frameDiffs: number[] = [];
+    const pendingJpegs: Promise<Blob>[] = [];
     let previousGray: Uint8Array | null = null;
     const startedAt = Date.now();
     let sampleTimer: ReturnType<typeof setInterval> | null = null;
@@ -111,10 +113,17 @@ export function MotionLivenessCapture({
       setProgress("Checking motion…");
 
       try {
+        const captured = await Promise.all(pendingJpegs);
+        const frameJpegs = captured.filter((jpeg) => jpeg.size > 200);
         const liveness = validatePixelMotionSamples(frameDiffs);
         if (!liveness.passed) {
           throw new Error(
             liveness.reason || "Live video required — static photos are not accepted."
+          );
+        }
+        if (frameJpegs.length < MIN_PIXEL_MOTION_FRAMES) {
+          throw new Error(
+            "Not enough live frames captured — keep your face in view and move your head slowly."
           );
         }
 
@@ -122,7 +131,7 @@ export function MotionLivenessCapture({
         stopCamera();
         setProcessing(false);
         setProgress("");
-        onVerified({ blob, motionScore: liveness.motionScore });
+        onVerified({ blob, motionScore: liveness.motionScore, frameJpegs });
       } catch (err) {
         setProcessing(false);
         setProgress("");
@@ -143,6 +152,8 @@ export function MotionLivenessCapture({
         frameDiffs.push(grayscaleFrameDiff(previousGray, current));
       }
       if (current) previousGray = current;
+
+      pendingJpegs.push(captureJpegFromVideo(video, 240));
 
       const pct = Math.min(100, Math.round((elapsed / RECORD_MS) * 100));
       setProgress(`Recording… ${pct}% — move your head slowly`);
@@ -177,7 +188,7 @@ export function MotionLivenessCapture({
         disabled={disabled || !cameraReady || starting || recording || processing}
       >
         <Video className="mr-2 h-4 w-4" />
-        {recording ? "Recording…" : processing ? "Checking…" : "Record live check (3s)"}
+        {recording ? "Recording…" : processing ? "Checking…" : "Record live check (4s)"}
       </Button>
     </div>
   );

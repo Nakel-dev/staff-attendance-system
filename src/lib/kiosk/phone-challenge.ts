@@ -11,7 +11,10 @@ import {
   getFaceLivenessSessionResults,
   isAwsFaceLivenessConfigured,
 } from "@/lib/aws/face-liveness";
-import { MIN_MOTION_SCORE } from "@/lib/face/liveness";
+import {
+  motionValidationErrorMessage,
+  validateMotionFromJpegBuffers,
+} from "@/lib/face/server-pixel-motion";
 import {
   getDiditSessionDecision,
   isDiditConfigured,
@@ -205,7 +208,7 @@ export async function completePhoneClockChallenge(input: {
   photoBytes?: Uint8Array;
   faceDescriptor?: number[];
   diditSessionId?: string;
-  motionScore?: number;
+  motionFrameBuffers?: Buffer[];
   livenessSessionId?: string;
 }): Promise<{ success: boolean; message: string; status?: string }> {
   const admin = createAdminClient();
@@ -308,13 +311,12 @@ export async function completePhoneClockChallenge(input: {
       }
       targetBytes = liveness.referenceImageBytes;
     } else {
-      const motionScore = input.motionScore;
-      if (!Number.isFinite(motionScore) || (motionScore as number) < MIN_MOTION_SCORE) {
+      const motion = validateMotionFromJpegBuffers(input.motionFrameBuffers || []);
+      if (!motion.passed) {
         await failChallenge(challenge.id, "missing_motion_liveness");
         return {
           success: false,
-          message:
-            "Live video required — static photos and phone screens are not accepted. Record the 3-second live check.",
+          message: motion.reason || motionValidationErrorMessage(),
         };
       }
     }
@@ -336,14 +338,13 @@ export async function completePhoneClockChallenge(input: {
     confidence = comparison.similarity;
     photoPath = await storePhoneCapture(challenge.staff_id, targetBytes);
   } else {
-    // local: motion liveness + match live descriptor against enrollment
-    const motionScore = input.motionScore;
-    if (!Number.isFinite(motionScore) || (motionScore as number) < MIN_MOTION_SCORE) {
+    // local: server-validated motion + match live descriptor against enrollment
+    const motion = validateMotionFromJpegBuffers(input.motionFrameBuffers || []);
+    if (!motion.passed) {
       await failChallenge(challenge.id, "missing_motion_liveness");
       return {
         success: false,
-        message:
-          "Live video required — static photos and phone screens are not accepted. Record the 3-second live check.",
+        message: motion.reason || motionValidationErrorMessage(),
       };
     }
 

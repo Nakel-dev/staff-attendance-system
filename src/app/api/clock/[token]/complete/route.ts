@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readMotionFrameBuffers } from "@/lib/face/motion-upload";
 import { completePhoneClockChallenge } from "@/lib/kiosk/phone-challenge";
 import { createBiometricAuthSession, isDiditConfigured } from "@/lib/didit/client";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -89,16 +90,14 @@ export async function POST(
       }
     }
 
+    const motionFrameBuffers = await readMotionFrameBuffers(form);
+
     const result = await completePhoneClockChallenge({
       token,
       photoBytes,
       faceDescriptor,
       diditSessionId,
-      motionScore: (() => {
-        const raw = form.get("motionScore");
-        const value = raw != null ? Number(raw) : NaN;
-        return Number.isFinite(value) ? value : undefined;
-      })(),
+      motionFrameBuffers,
       livenessSessionId: String(form.get("livenessSessionId") || "").trim() || undefined,
     });
     return NextResponse.json(result, { status: result.success ? 200 : 422 });

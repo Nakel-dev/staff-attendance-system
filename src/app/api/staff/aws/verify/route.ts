@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { compareFacesAws, isAwsRekognitionConfigured } from "@/lib/aws/rekognition";
 import { getFaceLivenessSessionResults } from "@/lib/aws/face-liveness";
-import { MIN_MOTION_SCORE } from "@/lib/face/liveness";
+import { requireServerMotionValidation } from "@/lib/face/motion-upload";
 import { writeAuditLog } from "@/lib/actions/audit";
 
 /** Staff portal: verify live selfie against profile photo via AWS CompareFaces. */
@@ -55,18 +55,11 @@ export async function POST(request: Request) {
       targetBytes = liveness.referenceImageBytes;
       livenessScore = liveness.confidence;
     } else {
-      const motionRaw = form.get("motionScore");
-      const motionScore = motionRaw != null ? Number(motionRaw) : NaN;
-      if (!Number.isFinite(motionScore) || motionScore < MIN_MOTION_SCORE) {
-        return NextResponse.json(
-          {
-            error:
-              "Live video required — static photos and phone screens are not accepted. Record the 3-second live check.",
-          },
-          { status: 422 }
-        );
+      const motion = await requireServerMotionValidation(form);
+      if (!motion.ok) {
+        return NextResponse.json({ error: motion.message }, { status: 422 });
       }
-      livenessScore = motionScore;
+      livenessScore = motion.motionScore;
 
       const file = form.get("file");
       if (!(file instanceof File)) {

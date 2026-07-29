@@ -9,6 +9,7 @@ export type LocalPhoneClockPayload = {
   blob: Blob;
   descriptor: number[];
   motionScore: number;
+  frameJpegs: Blob[];
 };
 
 /** Local phone clock: fast motion clip, then one lightweight face read from the captured frame. */
@@ -27,13 +28,22 @@ export function LocalPhoneClockCapture({
     preloadRegistrationModels();
   }, []);
 
-  const handleMotionVerified = async (result: { blob: Blob; motionScore: number }) => {
+  const handleMotionVerified = async (result: {
+    blob: Blob;
+    motionScore: number;
+    frameJpegs: Blob[];
+  }) => {
     setBusy(true);
     setError(null);
     setStatus("Reading face… (first time may take a minute on slow PCs)");
     try {
       const descriptor = await extractDescriptorFromJpegBlob(result.blob);
-      await onSubmit({ blob: result.blob, descriptor, motionScore: result.motionScore });
+      await onSubmit({
+        blob: result.blob,
+        descriptor,
+        motionScore: result.motionScore,
+        frameJpegs: result.frameJpegs,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Face read failed");
       setBusy(false);

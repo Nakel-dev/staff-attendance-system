@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AwsPhoneClockCapture } from "@/components/clock/AwsPhoneClockCapture";
 import { LocalPhoneClockCapture } from "@/components/clock/LocalPhoneClockCapture";
+import { appendMotionFrames } from "@/lib/face/motion-upload";
 import { fetchWithTimeout } from "@/lib/utils/fetch-with-timeout";
 
 type Provider = "local" | "aws" | "didit";
@@ -23,6 +24,7 @@ type ChallengeInfo = {
   organizationName: string;
   kioskName: string;
   provider: Provider;
+  awsLiveness?: boolean;
 };
 
 const DIDIT_KEY = (token: string) => `phone_clock_didit:${token}`;
@@ -156,13 +158,14 @@ export function PhoneClockClient({ token }: { token: string }) {
     photoBytes?: Blob;
     motionScore?: number;
     livenessSessionId?: string;
+    frameJpegs?: Blob[];
   }) => {
     setSubmitting(true);
     try {
       const form = new FormData();
       if (payload.photoBytes) form.append("file", payload.photoBytes, "selfie.jpg");
-      if (payload.motionScore != null) form.append("motionScore", String(payload.motionScore));
       if (payload.livenessSessionId) form.append("livenessSessionId", payload.livenessSessionId);
+      if (payload.frameJpegs?.length) appendMotionFrames(form, payload.frameJpegs);
       const res = await fetchWithTimeout(`/api/clock/${token}/complete`, {
         method: "POST",
         body: form,
@@ -183,7 +186,10 @@ export function PhoneClockClient({ token }: { token: string }) {
     }
   };
 
-  const submitPhoto = async (blob: Blob, opts?: { faceDescriptor?: number[]; motionScore?: number }) => {
+  const submitPhoto = async (
+    blob: Blob,
+    opts?: { faceDescriptor?: number[]; frameJpegs?: Blob[] }
+  ) => {
     setSubmitting(true);
     try {
       const form = new FormData();
@@ -191,9 +197,7 @@ export function PhoneClockClient({ token }: { token: string }) {
       if (opts?.faceDescriptor?.length) {
         form.append("faceDescriptor", JSON.stringify(opts.faceDescriptor));
       }
-      if (opts?.motionScore != null) {
-        form.append("motionScore", String(opts.motionScore));
-      }
+      if (opts?.frameJpegs?.length) appendMotionFrames(form, opts.frameJpegs);
       const res = await fetchWithTimeout(`/api/clock/${token}/complete`, {
         method: "POST",
         body: form,
@@ -218,10 +222,11 @@ export function PhoneClockClient({ token }: { token: string }) {
     blob: Blob;
     descriptor: number[];
     motionScore: number;
+    frameJpegs: Blob[];
   }) => {
     await submitPhoto(payload.blob, {
       faceDescriptor: payload.descriptor,
-      motionScore: payload.motionScore,
+      frameJpegs: payload.frameJpegs,
     });
   };
 
@@ -304,6 +309,8 @@ export function PhoneClockClient({ token }: { token: string }) {
               </div>
             ) : challenge.provider === "aws" ? (
               <AwsPhoneClockCapture
+                token={token}
+                awsLivenessEnabled={challenge.awsLiveness}
                 disabled={submitting}
                 onSubmit={submitAws}
               />
