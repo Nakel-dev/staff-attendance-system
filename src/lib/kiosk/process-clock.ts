@@ -1,23 +1,13 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyKioskPin } from "@/lib/kiosk/pin";
 import {
-  diditSessionMatchesStaff,
-  getDiditSessionDecision,
-  isDiditClockApproved,
+  DiditValidationError,
   isDiditConfigured,
+  validateDiditClockSession,
 } from "@/lib/didit/client";
 import type { KioskSessionContext } from "@/lib/kiosk/session";
 
 export type ClockAttemptType = "check_in" | "check_out";
-
-export type ReviewReason =
-  | "missing_photo"
-  | "duplicate_day"
-  | "photo_review"
-  | "video_review"
-  | "low_confidence"
-  | "no_match"
-  | "liveness_fail";
 
 export interface ProcessClockInput {
   session: KioskSessionContext;
@@ -30,10 +20,9 @@ export interface ProcessClockInput {
 
 export interface ProcessClockResult {
   success: boolean;
-  status: "clocked" | "review" | "rejected";
+  status: "clocked" | "rejected";
   message: string;
   recordId?: string;
-  reviewId?: string;
 }
 
 async function logAttempt(
@@ -50,6 +39,16 @@ async function logAttempt(
     outcome,
     metadata: extra,
   });
+}
+
+async function rejectClock(
+  input: ProcessClockInput,
+  outcome: string,
+  message: string,
+  extra: Record<string, unknown> = {}
+): Promise<ProcessClockResult> {
+  await logAttempt(input, outcome, extra);
+  return { success: false, status: "rejected", message };
 }
 
 async function getLastAcceptedType(staffId: string): Promise<ClockAttemptType | null> {
@@ -86,49 +85,6 @@ async function hasSameDayAcceptedRecord(
     .limit(1);
 
   return (data?.length ?? 0) > 0;
-}
-
-async function enqueueReview(
-  input: ProcessClockInput,
-  reason: ReviewReason,
-  staff: { avatar_url?: string | null },
-  extra: Record<string, unknown> = {}
-) {
-  const admin = createAdminClient();
-  const { data: review } = await admin
-    .from("review_queue")
-    .insert({
-      organization_id: input.session.organizationId,
-      staff_id: input.staffId,
-      kiosk_device_id: input.session.kioskId,
-      attempt_type: input.attemptType,
-      reason,
-      status: "pending",
-      live_capture_url: input.photoCaptureUrl || null,
-      stored_reference_url: staff.avatar_url || null,
-      frame_metadata: extra,
-    })
-    .select("id")
-    .single();
-
-  await logAttempt(input, reason, { reviewId: review?.id, ...extra });
-
-  const messages: Record<ReviewReason, string> = {
-    missing_photo: "No photo captured. Sent for admin review.",
-    duplicate_day: "Already clocked this action today. Sent for admin review.",
-    photo_review: "No profile photo on file. Sent for admin review.",
-    video_review: "Verification video saved for admin review.",
-    low_confidence: "Needs manual review.",
-    no_match: "Needs manual review.",
-    liveness_fail: "Needs manual review.",
-  };
-
-  return {
-    success: false as const,
-    status: "review" as const,
-    message: messages[reason],
-    reviewId: review?.id,
-  };
 }
 
 export async function processKioskClock(input: ProcessClockInput): Promise<ProcessClockResult> {
@@ -199,12 +155,14 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
 
   const sameDayDuplicate = await hasSameDayAcceptedRecord(input.staffId, input.attemptType);
   if (sameDayDuplicate) {
-    return enqueueReview(input, "duplicate_day", staff);
+    return rejectClock(input, "duplicate_day", "Already clocked this action today.");
   }
 
   const lastType = await getLastAcceptedType(input.staffId);
   if (lastType === input.attemptType) {
-    return enqueueReview(input, "duplicate_day", staff, { consecutive: true });
+    return rejectClock(input, "duplicate_day", "Already clocked for this action.", {
+      consecutive: true,
+    });
   }
 
   if (!isDiditConfigured()) {
@@ -225,27 +183,22 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
     };
   }
 
-  const decision = await getDiditSessionDecision(input.diditSessionId);
-  if (!diditSessionMatchesStaff(decision, input.staffId)) {
-    await logAttempt(input, "no_match", { reason: "vendor_data_mismatch", decision });
-    return {
-      success: false,
-      status: "rejected",
-      message: "Didit verification does not match the selected staff member.",
-    };
-  }
-
-  if (!isDiditClockApproved(decision)) {
-    if (decision.status === "Declined" || !decision.livenessApproved) {
-      return enqueueReview(input, "liveness_fail", staff, {
-        diditSessionId: input.diditSessionId,
-        diditStatus: decision.status,
-      });
-    }
-    return enqueueReview(input, "no_match", staff, {
+  let decision;
+  try {
+    decision = await validateDiditClockSession(input.staffId, input.diditSessionId);
+  } catch (error) {
+    const message =
+      error instanceof DiditValidationError
+        ? error.message
+        : error instanceof Error
+          ? error.message
+          : "Didit verification failed.";
+    const outcome =
+      error instanceof DiditValidationError && error.message.includes("different staff")
+        ? "no_match"
+        : "liveness_fail";
+    return rejectClock(input, outcome, message, {
       diditSessionId: input.diditSessionId,
-      diditStatus: decision.status,
-      faceMatchScore: decision.faceMatchScore,
     });
   }
 
@@ -267,7 +220,9 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
 
   if (error) {
     if (error.message.includes("duplicate_")) {
-      return enqueueReview(input, "duplicate_day", staff, { dbError: error.message });
+      return rejectClock(input, "duplicate_day", "Already clocked this action today.", {
+        dbError: error.message,
+      });
     }
     throw new Error(error.message);
   }
@@ -289,107 +244,4 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
         : "Didit verified. Checked out successfully.",
     recordId: record.id,
   };
-}
-
-export async function resolveReviewQueueItem(
-  reviewId: string,
-  adminProfileId: string,
-  decision: "approved" | "rejected"
-) {
-  const admin = createAdminClient();
-  const { data: review } = await admin
-    .from("review_queue")
-    .select("*")
-    .eq("id", reviewId)
-    .maybeSingle();
-
-  if (!review || review.status !== "pending") {
-    return { error: "Review item not found or already resolved." };
-  }
-
-  if (decision === "rejected") {
-    await admin
-      .from("review_queue")
-      .update({
-        status: "rejected",
-        reviewed_by: adminProfileId,
-        reviewed_at: new Date().toISOString(),
-      })
-      .eq("id", reviewId);
-
-    if (review.attendance_record_id) {
-      await admin
-        .from("attendance_records")
-        .update({ match_status: "rejected" })
-        .eq("id", review.attendance_record_id);
-    }
-
-    await admin.from("clock_attempts").insert({
-      organization_id: review.organization_id,
-      kiosk_id: review.kiosk_device_id,
-      staff_id: review.staff_id,
-      attempt_type: review.attempt_type,
-      outcome: "no_match",
-      metadata: { reviewId, manual: true },
-    });
-
-    return { success: true, status: "rejected" as const };
-  }
-
-  if (review.attendance_record_id) {
-    await admin
-      .from("attendance_records")
-      .update({
-        match_status: "manual_override",
-        liveness_passed: true,
-        reviewed_by: adminProfileId,
-      })
-      .eq("id", review.attendance_record_id);
-
-    await admin
-      .from("review_queue")
-      .update({
-        status: "approved",
-        reviewed_by: adminProfileId,
-        reviewed_at: new Date().toISOString(),
-        attendance_record_id: review.attendance_record_id,
-      })
-      .eq("id", reviewId);
-
-    return {
-      success: true,
-      status: "approved" as const,
-      recordId: review.attendance_record_id,
-    };
-  }
-
-  const { data: record, error } = await admin
-    .from("attendance_records")
-    .insert({
-      organization_id: review.organization_id,
-      staff_id: review.staff_id,
-      type: review.attempt_type,
-      match_status: "manual_override",
-      liveness_passed: true,
-      photo_capture_url: review.live_capture_url,
-      kiosk_device_id: review.kiosk_device_id,
-      reviewed_by: adminProfileId,
-      review_queue_id: review.id,
-    })
-    .select("id")
-    .single();
-
-  if (error) return { error: error.message };
-
-  await admin
-    .from("review_queue")
-    .update({
-      status: "approved",
-      reviewed_by: adminProfileId,
-      reviewed_at: new Date().toISOString(),
-      attendance_record_id: record.id,
-    })
-    .eq("id", reviewId);
-
-  return { success: true, status: "approved" as const, recordId: record.id };
 }

@@ -130,7 +130,6 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
       setStep("done");
       setProcessing(false);
       if (response.success) toast.success(response.message);
-      else if (response.status === "review") toast.message(response.message || "Sent for admin review");
       else toast.error(response.message || "Could not clock");
     },
     [attemptType, pin, selected]

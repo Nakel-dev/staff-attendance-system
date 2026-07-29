@@ -172,7 +172,7 @@ export function AttendanceSecuritySettings({ initial }: AttendanceSecuritySettin
             <span>
               <span className="block text-sm font-medium">Reception QR / desk code</span>
               <span className="text-xs text-muted-foreground">
-                Show QR on Attendance page at reception
+                Display QR at the reception kiosk (/kiosk)
               </span>
             </span>
           </label>

@@ -3,10 +3,12 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { writeAuditLog } from "@/lib/actions/audit";
 import {
+  DiditValidationError,
   getDiditSessionDecision,
   isDiditConfigured,
   isKycEnrollmentApproved,
   isTerminalDiditStatus,
+  validateDiditEnrollmentSession,
 } from "@/lib/didit/client";
 
 /**
@@ -43,9 +45,43 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Missing sessionId" }, { status: 400 });
     }
 
-    const decision = await getDiditSessionDecision(sessionId);
+    let decision;
+    try {
+      decision = await getDiditSessionDecision(sessionId);
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Could not read Didit status" },
+        { status: 502 }
+      );
+    }
+
     const terminal = isTerminalDiditStatus(decision.status);
-    const approved = isKycEnrollmentApproved(decision);
+    let approved = isKycEnrollmentApproved(decision);
+
+    if (approved) {
+      try {
+        decision = await validateDiditEnrollmentSession(profile.id, sessionId);
+      } catch (error) {
+        approved = false;
+        if (error instanceof DiditValidationError) {
+          return NextResponse.json({
+            sessionId: decision.sessionId,
+            status: decision.status,
+            terminal,
+            approved: false,
+            error: error.message,
+            idVerificationApproved: decision.idVerificationApproved,
+            livenessApproved: decision.livenessApproved,
+            faceMatchApproved: decision.faceMatchApproved,
+            faceMatchScore: decision.faceMatchScore,
+            livenessScore: decision.livenessScore,
+            enrolled: false,
+            enrolledAt: null,
+          });
+        }
+        throw error;
+      }
+    }
 
     let enrolled = false;
     let enrolledAt: string | null = null;

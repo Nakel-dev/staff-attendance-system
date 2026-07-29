@@ -8,11 +8,9 @@ import { getSignedProfilePhotoUrl } from "@/lib/storage/photos";
 const ADMIN_PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
   "/staff": "Staff Management",
-  "/attendance": "Mark Attendance",
   "/leaves": "Leave Requests",
   "/reports": "Reports",
   "/settings": "Settings",
-  "/review-queue": "Review Queue",
 };
 
 export default async function AdminLayout({

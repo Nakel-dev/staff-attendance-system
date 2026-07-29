@@ -6,11 +6,9 @@ import { createServerClient } from "@supabase/ssr";
 const ADMIN_ROUTES = [
   "/dashboard",
   "/staff",
-  "/attendance",
   "/leaves",
   "/reports",
   "/settings",
-  "/review-queue",
 ];
 
 const STAFF_ROUTES = ["/my-attendance"];

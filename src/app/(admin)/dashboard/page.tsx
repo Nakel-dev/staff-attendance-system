@@ -82,8 +82,8 @@ export default async function DashboardPage() {
           <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
           <p className="text-muted-foreground">Overview for {format(new Date(), "EEEE, MMMM d, yyyy")}</p>
         </div>
-        <Button asChild>
-          <Link href="/attendance">Mark Today&apos;s Attendance</Link>
+        <Button asChild variant="outline">
+          <Link href="/kiosk">Open reception kiosk</Link>
         </Button>
       </div>
 

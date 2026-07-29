@@ -26,7 +26,6 @@ interface MobileNavProps {
 const adminLinks: NavLink[] = [
   { href: "/dashboard", label: "Home", icon: LayoutDashboard },
   { href: "/staff", label: "Staff", icon: Users },
-  { href: "/attendance", label: "Attendance", icon: ClipboardCheck },
   { href: "/leaves", label: "Team", icon: CalendarDays, badge: true },
   { href: "/my-leaves", label: "My Leave", icon: CalendarDays },
   { href: "/profile", label: "Profile", icon: User },

@@ -2,10 +2,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { KioskSessionContext } from "@/lib/kiosk/session";
 import type { ClockAttemptType, ProcessClockResult } from "@/lib/kiosk/process-clock";
 import {
-  diditSessionMatchesStaff,
-  getDiditSessionDecision,
-  isDiditClockApproved,
+  DiditValidationError,
   isDiditConfigured,
+  validateDiditClockSession,
 } from "@/lib/didit/client";
 
 async function getLastAcceptedType(staffId: string): Promise<ClockAttemptType | null> {
@@ -56,21 +55,19 @@ export async function processKioskDiditClock(input: {
     };
   }
 
-  const decision = await getDiditSessionDecision(input.diditSessionId);
-
-  if (!diditSessionMatchesStaff(decision, input.staffId)) {
+  let decision;
+  try {
+    decision = await validateDiditClockSession(input.staffId, input.diditSessionId);
+  } catch (error) {
     return {
       success: false,
       status: "rejected",
-      message: "Didit verification does not match this staff member.",
-    };
-  }
-
-  if (!isDiditClockApproved(decision)) {
-    return {
-      success: false,
-      status: "rejected",
-      message: `Didit verification not approved (${decision.status}).`,
+      message:
+        error instanceof DiditValidationError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Didit verification failed.",
     };
   }
 

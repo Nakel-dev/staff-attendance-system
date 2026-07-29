@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Users, ClipboardCheck, UserPlus } from "lucide-react";
+import { Users, Monitor, UserPlus } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AUTH_PATH } from "@/constants";
@@ -39,13 +39,13 @@ export function GettingStartedCard({ inviteCode }: GettingStartedCardProps) {
           </Button>
         </div>
         <div className="rounded-lg border p-4 space-y-2">
-          <ClipboardCheck className="h-5 w-5 text-primary" />
-          <p className="font-medium text-sm">Mark attendance</p>
+          <Monitor className="h-5 w-5 text-primary" />
+          <p className="font-medium text-sm">Set up reception kiosk</p>
           <p className="text-xs text-muted-foreground">
-            Record daily attendance once your team has joined.
+            Open /kiosk on a tablet at reception for Didit check-in and check-out.
           </p>
           <Button asChild size="sm" variant="outline">
-            <Link href="/attendance">Mark attendance</Link>
+            <Link href="/kiosk">Open kiosk</Link>
           </Button>
         </div>
       </CardContent>

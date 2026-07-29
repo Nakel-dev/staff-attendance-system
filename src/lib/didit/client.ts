@@ -1,4 +1,13 @@
+import { createAdminClient } from "@/lib/supabase/admin";
+
 const DIDIT_BASE = "https://verification.didit.me/v3";
+
+export class DiditValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DiditValidationError";
+  }
+}
 
 export function isDiditConfigured(): boolean {
   return Boolean(process.env.DIDIT_API_KEY && process.env.DIDIT_WORKFLOW_ID);
@@ -146,6 +155,109 @@ export function isDiditClockApproved(decision: DiditDecisionResult): boolean {
 
 export function diditSessionMatchesStaff(decision: DiditDecisionResult, staffId: string): boolean {
   return String(decision.raw?.vendor_data || "") === staffId;
+}
+
+async function findClockUseOfDiditSession(
+  diditSessionId: string
+): Promise<{ staffId: string } | null> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("clock_attempts")
+    .select("staff_id")
+    .eq("outcome", "success")
+    .filter("metadata->>diditSessionId", "eq", diditSessionId)
+    .limit(1)
+    .maybeSingle();
+
+  return data?.staff_id ? { staffId: data.staff_id } : null;
+}
+
+async function findEnrollmentUseByOtherStaff(
+  diditSessionId: string,
+  staffId: string
+): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("audit_logs")
+    .select("resource_id")
+    .eq("action", "face_enrolled")
+    .filter("metadata->>sessionId", "eq", diditSessionId)
+    .neq("resource_id", staffId)
+    .limit(1)
+    .maybeSingle();
+
+  return Boolean(data?.resource_id);
+}
+
+/** Kiosk / phone clock: staff binding, approval, and single-use session. */
+export async function validateDiditClockSession(
+  staffId: string,
+  diditSessionId: string
+): Promise<DiditDecisionResult> {
+  const decision = await getDiditSessionDecision(diditSessionId);
+
+  if (!diditSessionMatchesStaff(decision, staffId)) {
+    throw new DiditValidationError(
+      "This Didit verification belongs to a different staff member."
+    );
+  }
+
+  if (!isDiditClockApproved(decision)) {
+    throw new DiditValidationError(
+      `Didit verification not approved (${decision.status}).`
+    );
+  }
+
+  const priorClock = await findClockUseOfDiditSession(diditSessionId);
+  if (priorClock) {
+    if (priorClock.staffId !== staffId) {
+      throw new DiditValidationError(
+        "This Didit session was already used for another staff member."
+      );
+    }
+    throw new DiditValidationError("This Didit session was already used to record attendance.");
+  }
+
+  if (await findEnrollmentUseByOtherStaff(diditSessionId, staffId)) {
+    throw new DiditValidationError(
+      "This Didit session was already used for another staff member."
+    );
+  }
+
+  return decision;
+}
+
+/** Portal KYC: staff binding and block cross-account session reuse. */
+export async function validateDiditEnrollmentSession(
+  staffId: string,
+  diditSessionId: string
+): Promise<DiditDecisionResult> {
+  const decision = await getDiditSessionDecision(diditSessionId);
+
+  if (!diditSessionMatchesStaff(decision, staffId)) {
+    throw new DiditValidationError(
+      "This Didit verification belongs to a different staff member."
+    );
+  }
+
+  if (!isKycEnrollmentApproved(decision)) {
+    throw new DiditValidationError(`Didit KYC not approved (${decision.status}).`);
+  }
+
+  if (await findEnrollmentUseByOtherStaff(diditSessionId, staffId)) {
+    throw new DiditValidationError(
+      "This Didit session was already used for another staff member."
+    );
+  }
+
+  const priorClock = await findClockUseOfDiditSession(diditSessionId);
+  if (priorClock && priorClock.staffId !== staffId) {
+    throw new DiditValidationError(
+      "This Didit session was already used for another staff member."
+    );
+  }
+
+  return decision;
 }
 
 export function isTerminalDiditStatus(status: string): boolean {

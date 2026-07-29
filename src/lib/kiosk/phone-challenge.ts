@@ -5,10 +5,9 @@ import type { KioskSessionContext } from "@/lib/kiosk/session";
 import type { ClockAttemptType } from "@/lib/kiosk/process-clock";
 import { normalizeBiometricProvider } from "@/lib/biometrics/providers";
 import {
-  diditSessionMatchesStaff,
-  getDiditSessionDecision,
-  isDiditClockApproved,
+  DiditValidationError,
   isDiditConfigured,
+  validateDiditClockSession,
 } from "@/lib/didit/client";
 
 export const PHONE_CLOCK_TTL_SECONDS = 60;
@@ -243,17 +242,18 @@ export async function completePhoneClockChallenge(input: {
     return { success: false, message: "Complete Didit verification on your phone first." };
   }
 
-  const decision = await getDiditSessionDecision(input.diditSessionId);
-  if (!diditSessionMatchesStaff(decision, challenge.staff_id)) {
-    await failChallenge(challenge.id, "Didit staff mismatch");
-    return { success: false, message: "Didit verification does not match this staff member." };
-  }
-  if (!isDiditClockApproved(decision)) {
-    await failChallenge(challenge.id, `Didit ${decision.status}`);
-    return {
-      success: false,
-      message: `Didit verification not approved (${decision.status}). Try again.`,
-    };
+  let decision;
+  try {
+    decision = await validateDiditClockSession(challenge.staff_id, input.diditSessionId);
+  } catch (error) {
+    const message =
+      error instanceof DiditValidationError
+        ? error.message
+        : error instanceof Error
+          ? error.message
+          : "Didit verification failed.";
+    await failChallenge(challenge.id, message);
+    return { success: false, message };
   }
 
   const confidence = decision.faceMatchScore ?? null;
@@ -301,7 +301,12 @@ export async function completePhoneClockChallenge(input: {
     kiosk_id: challenge.kiosk_id,
     attempt_type: challenge.attempt_type,
     outcome: "success",
-    metadata: { channel: "phone_qr", provider: "didit", confidence },
+    metadata: {
+      channel: "phone_qr",
+      provider: "didit",
+      diditSessionId: input.diditSessionId,
+      confidence,
+    },
   });
 
   return {
