@@ -3,21 +3,13 @@ import { verifyKioskPin } from "@/lib/kiosk/pin";
 import { randomBytes } from "crypto";
 import type { KioskSessionContext } from "@/lib/kiosk/session";
 import type { ClockAttemptType } from "@/lib/kiosk/process-clock";
+import { normalizeBiometricProvider } from "@/lib/biometrics/providers";
 import {
+  diditSessionMatchesStaff,
   getDiditSessionDecision,
+  isDiditClockApproved,
   isDiditConfigured,
 } from "@/lib/didit/client";
-import {
-  compareFacesFacePlusPlus,
-  isFacePlusPlusConfigured,
-} from "@/lib/faceplusplus/client";
-import {
-  motionValidationErrorMessage,
-  validateMotionFromJpegBuffers,
-} from "@/lib/face/server-pixel-motion";
-import { normalizeBiometricProvider } from "@/lib/biometrics/providers";
-import { matchAgainstEmbeddings } from "@/lib/kiosk/face-match";
-import { FACE_MATCH_THRESHOLD, isValidFaceDescriptor } from "@/lib/utils/faceMatch";
 
 export const PHONE_CLOCK_TTL_SECONDS = 60;
 
@@ -52,10 +44,9 @@ export async function createPhoneClockChallenge(input: {
   if (!staff.kiosk_pin_hash || !verifyKioskPin(input.pin, staff.kiosk_pin_hash)) {
     return { error: "Incorrect PIN", status: 401 };
   }
-  if (!staff.avatar_url || !staff.face_enrolled_at) {
+  if (!staff.face_enrolled_at) {
     return {
-      error:
-        "Complete camera photo and face verification in the staff portal before using the kiosk.",
+      error: "Complete Didit KYC verification in the staff portal before using the kiosk.",
       status: 422,
     };
   }
@@ -137,8 +128,6 @@ export async function getPhoneChallengePublic(token: string) {
     .single();
 
   const provider = normalizeBiometricProvider(org?.biometric_provider);
-  const faceppOk = isFacePlusPlusConfigured();
-  const diditOk = isDiditConfigured();
 
   return {
     challenge: {
@@ -155,12 +144,7 @@ export async function getPhoneChallengePublic(token: string) {
       organizationName: org?.name || "Organization",
       kioskName: kiosk?.device_name || "Reception kiosk",
       provider,
-      providerReady:
-        provider === "faceplusplus"
-          ? faceppOk
-          : provider === "didit"
-            ? diditOk
-            : true,
+      providerReady: isDiditConfigured() && !!staff?.face_enrolled_at,
     },
   };
 }
@@ -241,159 +225,40 @@ export async function completePhoneClockChallenge(input: {
     .eq("id", challenge.staff_id)
     .single();
 
-  if (!staff?.is_active || !staff.avatar_url || !staff.face_enrolled_at) {
-    await failChallenge(challenge.id, "Staff profile, photo, or face enrollment missing");
+  if (!staff?.is_active || !staff.face_enrolled_at) {
+    await failChallenge(challenge.id, "Staff profile or KYC verification missing");
     return {
       success: false,
-      message: "Complete camera photo and face verification in the portal first.",
+      message: "Complete Didit KYC verification in the staff portal first.",
       status: "rejected",
     };
   }
 
-  const { data: org } = await admin
-    .from("organizations")
-    .select("biometric_provider")
-    .eq("id", challenge.organization_id)
-    .single();
-
-  const provider = normalizeBiometricProvider(org?.biometric_provider);
-  if (provider === "faceplusplus" && !isFacePlusPlusConfigured()) {
-    await failChallenge(challenge.id, "Face++ not configured on server");
-    return {
-      success: false,
-      message:
-        "Face++ is not configured on the server. Ask your admin to add FACEPP_API_KEY and FACEPP_API_SECRET.",
-    };
-  }
-  if (provider === "didit" && !isDiditConfigured()) {
+  if (!isDiditConfigured()) {
     await failChallenge(challenge.id, "Didit not configured");
     return { success: false, message: "Didit is not configured on the server." };
   }
 
-  let confidence: number | null = null;
-  let livenessPassed = true;
-  let photoPath: string | null = null;
-
-  if (provider === "didit") {
-    if (!input.diditSessionId?.trim()) {
-      return { success: false, message: "Complete Didit face check on your phone first." };
-    }
-    const decision = await getDiditSessionDecision(input.diditSessionId);
-    if (String(decision.raw?.vendor_data || "") !== challenge.staff_id) {
-      await failChallenge(challenge.id, "Didit staff mismatch");
-      return { success: false, message: "Face verification does not match this staff member." };
-    }
-    if (!(decision.status === "Approved" && decision.livenessApproved && decision.faceMatchApproved)) {
-      await failChallenge(challenge.id, `Didit ${decision.status}`);
-      return {
-        success: false,
-        message: `Face verification not approved (${decision.status}). Try again.`,
-      };
-    }
-    confidence = decision.faceMatchScore ?? null;
-    livenessPassed = true;
-  } else if (provider === "faceplusplus") {
-    const motion = validateMotionFromJpegBuffers(input.motionFrameBuffers || []);
-    if (!motion.passed) {
-      await failChallenge(challenge.id, "missing_motion_liveness");
-      return {
-        success: false,
-        message: motion.reason || motionValidationErrorMessage(),
-      };
-    }
-
-    const targetBytes = input.photoBytes;
-    if (!targetBytes?.byteLength) {
-      return { success: false, message: "Take a live selfie to continue." };
-    }
-
-    const { data: profilePhoto } = await admin.storage
-      .from("profile-photos")
-      .download(staff.avatar_url);
-
-    if (!profilePhoto) {
-      await failChallenge(challenge.id, "missing_profile_photo");
-      return { success: false, message: "Could not load your profile photo." };
-    }
-
-    const comparison = await compareFacesFacePlusPlus({
-      referenceImageBytes: new Uint8Array(await profilePhoto.arrayBuffer()),
-      liveImageBytes: targetBytes,
-    });
-    if (!comparison.matched) {
-      await failChallenge(challenge.id, `Face++ ${comparison.confidence}`);
-      return {
-        success: false,
-        message: `Face did not match your portal verification (${comparison.confidence.toFixed(0)}%). Try better lighting.`,
-      };
-    }
-    confidence = comparison.confidence;
-    photoPath = await storePhoneCapture(challenge.staff_id, targetBytes);
-  } else {
-    // local: server-validated motion + match live descriptor against enrollment
-    const motion = validateMotionFromJpegBuffers(input.motionFrameBuffers || []);
-    if (!motion.passed) {
-      await failChallenge(challenge.id, "missing_motion_liveness");
-      return {
-        success: false,
-        message: motion.reason || motionValidationErrorMessage(),
-      };
-    }
-
-    if (!input.faceDescriptor || !isValidFaceDescriptor(input.faceDescriptor)) {
-      return {
-        success: false,
-        message: "Take a live face capture so we can match it to your signup enrollment.",
-      };
-    }
-
-    const { data: embeddings } = await admin
-      .from("face_embeddings")
-      .select("embedding_values")
-      .eq("staff_id", challenge.staff_id)
-      .eq("is_active", true);
-
-    const stored: number[][] = (embeddings || [])
-      .map((row) => row.embedding_values as number[])
-      .filter((d) => Array.isArray(d) && d.length === 128);
-
-    const { data: profileDesc } = await admin
-      .from("profiles")
-      .select("face_descriptor")
-      .eq("id", challenge.staff_id)
-      .single();
-
-    if (Array.isArray(profileDesc?.face_descriptor) && profileDesc.face_descriptor.length === 128) {
-      stored.push(profileDesc.face_descriptor as number[]);
-    }
-
-    if (stored.length === 0) {
-      await failChallenge(challenge.id, "No enrollment embeddings");
-      return {
-        success: false,
-        message: "No face enrollment found. Complete face verification in the portal again.",
-      };
-    }
-
-    const match = matchAgainstEmbeddings(
-      input.faceDescriptor,
-      stored,
-      FACE_MATCH_THRESHOLD
-    );
-    if (!match.matched) {
-      await failChallenge(challenge.id, `local distance ${match.bestDistance}`);
-      return {
-        success: false,
-        message:
-          "Face did not match your signup enrollment. Try better lighting and look straight ahead.",
-      };
-    }
-    confidence = Math.round(match.confidenceScore * 100);
-    if (input.photoBytes?.byteLength) {
-      photoPath = await storePhoneCapture(challenge.staff_id, input.photoBytes);
-    }
-    livenessPassed = true;
+  if (!input.diditSessionId?.trim()) {
+    return { success: false, message: "Complete Didit verification on your phone first." };
   }
+
+  const decision = await getDiditSessionDecision(input.diditSessionId);
+  if (!diditSessionMatchesStaff(decision, challenge.staff_id)) {
+    await failChallenge(challenge.id, "Didit staff mismatch");
+    return { success: false, message: "Didit verification does not match this staff member." };
+  }
+  if (!isDiditClockApproved(decision)) {
+    await failChallenge(challenge.id, `Didit ${decision.status}`);
+    return {
+      success: false,
+      message: `Didit verification not approved (${decision.status}). Try again.`,
+    };
+  }
+
+  const confidence = decision.faceMatchScore ?? null;
+  const livenessPassed = true;
+  const photoPath: string | null = null;
 
   const { data: record, error: insertError } = await admin
     .from("attendance_records")
@@ -436,7 +301,7 @@ export async function completePhoneClockChallenge(input: {
     kiosk_id: challenge.kiosk_id,
     attempt_type: challenge.attempt_type,
     outcome: "success",
-    metadata: { channel: "phone_qr", provider, confidence },
+    metadata: { channel: "phone_qr", provider: "didit", confidence },
   });
 
   return {
@@ -456,15 +321,4 @@ async function failChallenge(id: string, reason: string) {
     .update({ status: "failed", failure_reason: reason, completed_at: new Date().toISOString() })
     .eq("id", id)
     .eq("status", "pending");
-}
-
-async function storePhoneCapture(staffId: string, bytes: Uint8Array): Promise<string | null> {
-  const admin = createAdminClient();
-  const path = `${staffId}/phone-${Date.now()}.jpg`;
-  const { error } = await admin.storage.from("kiosk-attendance-photos").upload(path, bytes, {
-    contentType: "image/jpeg",
-    upsert: false,
-  });
-  if (error) return null;
-  return path;
 }

@@ -1,5 +1,3 @@
-import { createAdminClient } from "@/lib/supabase/admin";
-
 const DIDIT_BASE = "https://verification.didit.me/v3";
 
 export function isDiditConfigured(): boolean {
@@ -27,35 +25,21 @@ export interface DiditSessionCreateResult {
 export interface DiditDecisionResult {
   sessionId: string;
   status: string;
+  idVerificationApproved: boolean;
   livenessApproved: boolean;
   faceMatchApproved: boolean;
+  hasFaceMatchChecks: boolean;
   faceMatchScore?: number;
   livenessScore?: number;
   raw?: Record<string, unknown>;
 }
 
-async function downloadProfilePhotoBase64(avatarPath: string): Promise<string> {
-  const admin = createAdminClient();
-  const { data, error } = await admin.storage.from("profile-photos").download(avatarPath);
-  if (error || !data) {
-    throw new Error("Could not load staff profile photo for face match.");
-  }
-  const buffer = Buffer.from(await data.arrayBuffer());
-  if (buffer.byteLength > 1_800_000) {
-    throw new Error("Profile photo is too large for Didit (max ~1.8MB). Upload a smaller photo.");
-  }
-  return buffer.toString("base64");
-}
-
-export async function createBiometricAuthSession(input: {
+/** Create a Didit session. vendor_data must be the staff profile UUID. */
+export async function createDiditSession(input: {
   staffId: string;
-  avatarPath: string;
-  attemptType: "check_in" | "check_out" | "identity_verify";
   callbackUrl: string;
   metadata?: Record<string, unknown>;
 }): Promise<DiditSessionCreateResult> {
-  const portraitImage = await downloadProfilePhotoBase64(input.avatarPath);
-
   const res = await fetch(`${DIDIT_BASE}/session/`, {
     method: "POST",
     headers: {
@@ -64,18 +48,9 @@ export async function createBiometricAuthSession(input: {
     },
     body: JSON.stringify({
       workflow_id: workflowId(),
-      workflow_type: "biometric_authentication",
       vendor_data: input.staffId,
       callback: input.callbackUrl,
-      metadata: {
-        attempt_type: input.attemptType,
-        source:
-          input.attemptType === "identity_verify"
-            ? "attendpro_staff_portal"
-            : "attendpro_kiosk",
-        ...input.metadata,
-      },
-      portrait_image: portraitImage,
+      metadata: input.metadata,
     }),
   });
 
@@ -101,18 +76,21 @@ export async function createBiometricAuthSession(input: {
   };
 }
 
+/** @alias createDiditSession */
+export const createKycSession = createDiditSession;
+
 function featureApproved(
   items: unknown,
   scoreKey: "score" | "similarity_score" = "score"
-): { approved: boolean; score?: number } {
+): { approved: boolean; score?: number; present: boolean } {
   if (!Array.isArray(items) || items.length === 0) {
-    return { approved: false };
+    return { approved: false, present: false };
   }
   const first = items[0] as Record<string, unknown>;
-  const status = String(first.status || "");
   const scoreRaw = first[scoreKey] ?? first.score;
   const score = typeof scoreRaw === "number" ? scoreRaw : undefined;
-  return { approved: status === "Approved", score };
+  const approved = items.every((item) => String((item as Record<string, unknown>).status) === "Approved");
+  return { approved, score, present: true };
 }
 
 export async function getDiditSessionDecision(sessionId: string): Promise<DiditDecisionResult> {
@@ -132,18 +110,42 @@ export async function getDiditSessionDecision(sessionId: string): Promise<DiditD
   }
 
   const status = String(body.status || "Unknown");
+  const idVerification = featureApproved(body.id_verifications);
   const liveness = featureApproved(body.liveness_checks);
   const face = featureApproved(body.face_matches);
 
   return {
     sessionId,
     status,
-    livenessApproved: liveness.approved,
-    faceMatchApproved: face.approved,
+    idVerificationApproved: idVerification.present ? idVerification.approved : status === "Approved",
+    livenessApproved: liveness.present ? liveness.approved : status === "Approved",
+    faceMatchApproved: face.present ? face.approved : true,
+    hasFaceMatchChecks: face.present,
     faceMatchScore: face.score,
     livenessScore: liveness.score,
     raw: body,
   };
+}
+
+/** Portal enrollment: full KYC (ID + liveness + optional face match). */
+export function isKycEnrollmentApproved(decision: DiditDecisionResult): boolean {
+  if (decision.status !== "Approved") return false;
+  if (!decision.idVerificationApproved) return false;
+  if (!decision.livenessApproved) return false;
+  if (decision.hasFaceMatchChecks && !decision.faceMatchApproved) return false;
+  return true;
+}
+
+/** Kiosk / phone clock: liveness (+ face match if workflow includes it). ID not re-required. */
+export function isDiditClockApproved(decision: DiditDecisionResult): boolean {
+  if (decision.status !== "Approved") return false;
+  if (!decision.livenessApproved) return false;
+  if (decision.hasFaceMatchChecks && !decision.faceMatchApproved) return false;
+  return true;
+}
+
+export function diditSessionMatchesStaff(decision: DiditDecisionResult, staffId: string): boolean {
+  return String(decision.raw?.vendor_data || "") === staffId;
 }
 
 export function isTerminalDiditStatus(status: string): boolean {

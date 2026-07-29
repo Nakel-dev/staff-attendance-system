@@ -2,13 +2,9 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isDiditConfigured } from "@/lib/didit/client";
-import { isFacePlusPlusConfigured } from "@/lib/faceplusplus/client";
-import {
-  isBiometricProviderReady,
-  normalizeBiometricProvider,
-} from "@/lib/biometrics/providers";
+import { normalizeBiometricProvider } from "@/lib/biometrics/providers";
 
-/** Staff portal: org face verification method + deployment availability. */
+/** Staff portal: Didit KYC config. */
 export async function GET() {
   const supabase = await createClient();
   const {
@@ -34,23 +30,15 @@ export async function GET() {
     .maybeSingle();
 
   const portalProvider = normalizeBiometricProvider(org?.biometric_provider);
-  const faceppOk = isFacePlusPlusConfigured();
   const diditOk = isDiditConfigured();
-  const ready = isBiometricProviderReady(portalProvider, {
-    faceplusplusConfigured: faceppOk,
-    diditConfigured: diditOk,
-  });
 
   return NextResponse.json({
     provider: portalProvider,
     portalProvider,
-    ready,
-    availability: { local: true, didit: diditOk, faceplusplus: faceppOk },
-    setupHint:
-      portalProvider === "faceplusplus" && !faceppOk
-        ? "Face++ keys are missing. Add FACEPP_API_KEY and FACEPP_API_SECRET to .env.local."
-        : portalProvider === "didit" && !diditOk
-          ? "Didit is not configured. Add Didit keys or switch admin settings to Face++."
-          : undefined,
+    ready: diditOk,
+    availability: { didit: diditOk },
+    setupHint: !diditOk
+      ? "Didit is not configured. Add DIDIT_API_KEY and DIDIT_WORKFLOW_ID (KYC workflow from Didit console)."
+      : undefined,
   });
 }

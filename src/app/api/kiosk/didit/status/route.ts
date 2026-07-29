@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getKioskSessionFromCookies } from "@/lib/kiosk/session";
 import {
   getDiditSessionDecision,
+  isDiditClockApproved,
   isDiditConfigured,
   isTerminalDiditStatus,
 } from "@/lib/didit/client";
@@ -24,10 +25,13 @@ export async function GET(request: Request) {
     }
 
     const decision = await getDiditSessionDecision(sessionId);
+    const clockApproved = isDiditClockApproved(decision);
+
     return NextResponse.json({
       sessionId: decision.sessionId,
       status: decision.status,
       terminal: isTerminalDiditStatus(decision.status),
+      clockApproved,
       livenessApproved: decision.livenessApproved,
       faceMatchApproved: decision.faceMatchApproved,
       faceMatchScore: decision.faceMatchScore,

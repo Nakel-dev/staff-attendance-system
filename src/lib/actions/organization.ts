@@ -126,7 +126,7 @@ export async function getOrganizationSettings() {
         .eq("id", auth.profile.organization_id)
         .single();
       org = fallback.data
-        ? { ...fallback.data, biometric_provider: "faceplusplus" }
+        ? { ...fallback.data, biometric_provider: "didit" }
         : null;
       error = fallback.error;
     }
@@ -134,15 +134,11 @@ export async function getOrganizationSettings() {
     if (error || !org) return { error: error?.message || "Organization not found" };
     const biometricProvider = normalizeBiometricProvider(org.biometric_provider);
 
-    // Persist legacy "aws" → faceplusplus once migration 017 is applied.
-    if (org.biometric_provider === "aws" && biometricProvider === "faceplusplus") {
-      const { error: migrateError } = await admin
+    if (org.biometric_provider !== "didit") {
+      await admin
         .from("organizations")
-        .update({ biometric_provider: "faceplusplus", updated_at: new Date().toISOString() })
+        .update({ biometric_provider: "didit", updated_at: new Date().toISOString() })
         .eq("id", auth.profile.organization_id);
-      if (migrateError && !/check constraint/i.test(migrateError.message)) {
-        console.warn("Could not migrate biometric_provider from aws:", migrateError.message);
-      }
     }
 
     return {
@@ -165,7 +161,7 @@ export async function updateAttendanceSecuritySettings(input: {
   requireFaceMatch: boolean;
   requireGeofence: boolean;
   requireQrCode: boolean;
-  biometricProvider: "local" | "didit" | "faceplusplus";
+  biometricProvider: "didit";
 }) {
   try {
     const auth = await requireOrgAdmin();
@@ -182,7 +178,7 @@ export async function updateAttendanceSecuritySettings(input: {
       return { error: "Office location is required when geofence verification is enabled" };
     }
 
-    if (!["local", "didit", "faceplusplus"].includes(input.biometricProvider)) {
+    if (input.biometricProvider !== "didit") {
       return { error: "Invalid biometric provider" };
     }
 
@@ -196,7 +192,7 @@ export async function updateAttendanceSecuritySettings(input: {
       require_face_match: input.requireFaceMatch,
       require_geofence: input.requireGeofence,
       require_qr_code: input.requireQrCode,
-      biometric_provider: input.biometricProvider,
+      biometric_provider: "didit",
       updated_at: new Date().toISOString(),
     };
 

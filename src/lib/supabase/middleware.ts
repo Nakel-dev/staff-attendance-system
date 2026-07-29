@@ -134,10 +134,7 @@ export async function updateSession(request: NextRequest) {
 
     if (profile?.role) {
       const url = request.nextUrl.clone();
-      if (
-        profile.role === "staff" &&
-        (!profile.avatar_url || !profile.face_enrolled_at)
-      ) {
+      if (profile.role === "staff" && !profile.face_enrolled_at) {
         url.pathname = "/profile";
         url.searchParams.set("enroll", "1");
       } else {
@@ -179,10 +176,10 @@ export async function updateSession(request: NextRequest) {
 
     const role = profile.role;
 
-    // Staff must finish camera photo + face verification before using the portal
+    // Staff must finish Didit KYC before using the portal
     if (
       role === "staff" &&
-      (!profile.avatar_url || !profile.face_enrolled_at) &&
+      !profile.face_enrolled_at &&
       !pathname.startsWith("/profile") &&
       !pathname.startsWith("/api/staff")
     ) {

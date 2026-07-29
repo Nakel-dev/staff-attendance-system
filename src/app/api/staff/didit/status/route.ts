@@ -5,12 +5,13 @@ import { writeAuditLog } from "@/lib/actions/audit";
 import {
   getDiditSessionDecision,
   isDiditConfigured,
+  isKycEnrollmentApproved,
   isTerminalDiditStatus,
 } from "@/lib/didit/client";
 
 /**
- * Poll Didit decision for staff-portal identity verification.
- * On Approved, marks the profile as face-verified (enrollment complete).
+ * Poll Didit KYC decision for staff-portal identity verification.
+ * On Approved KYC, marks the profile as verified (face_enrolled_at).
  */
 export async function GET(request: Request) {
   try {
@@ -44,10 +45,7 @@ export async function GET(request: Request) {
 
     const decision = await getDiditSessionDecision(sessionId);
     const terminal = isTerminalDiditStatus(decision.status);
-    const approved =
-      decision.status === "Approved" &&
-      decision.livenessApproved &&
-      decision.faceMatchApproved;
+    const approved = isKycEnrollmentApproved(decision);
 
     let enrolled = false;
     let enrolledAt: string | null = null;
@@ -72,7 +70,7 @@ export async function GET(request: Request) {
           resourceType: "profile",
           resourceId: profile.id,
           metadata: {
-            method: "didit",
+            method: "didit_kyc",
             sessionId: decision.sessionId,
             faceMatchScore: decision.faceMatchScore,
             livenessScore: decision.livenessScore,
@@ -86,6 +84,7 @@ export async function GET(request: Request) {
       status: decision.status,
       terminal,
       approved,
+      idVerificationApproved: decision.idVerificationApproved,
       livenessApproved: decision.livenessApproved,
       faceMatchApproved: decision.faceMatchApproved,
       faceMatchScore: decision.faceMatchScore,

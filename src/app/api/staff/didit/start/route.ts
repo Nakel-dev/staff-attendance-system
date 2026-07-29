@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createBiometricAuthSession, isDiditConfigured } from "@/lib/didit/client";
+import { createDiditSession, isDiditConfigured } from "@/lib/didit/client";
 
-/** Start Didit biometric identity verification for the signed-in staff member (not clock-in). */
+/** Start Didit KYC identity verification for the signed-in staff member. */
 export async function POST(request: Request) {
   try {
     if (!isDiditConfigured()) {
       return NextResponse.json(
-        { error: "Didit is not configured. Set DIDIT_API_KEY and DIDIT_WORKFLOW_ID." },
+        {
+          error:
+            "Didit is not configured. Set DIDIT_API_KEY and DIDIT_WORKFLOW_ID (KYC workflow from Didit console).",
+        },
         { status: 503 }
       );
     }
@@ -22,22 +25,12 @@ export async function POST(request: Request) {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, full_name, avatar_url, is_active, organization_id")
+      .select("id, full_name, is_active, organization_id")
       .eq("user_id", user.id)
       .single();
 
     if (!profile?.is_active) {
       return NextResponse.json({ error: "Profile not found or inactive" }, { status: 404 });
-    }
-
-    if (!profile.avatar_url) {
-      return NextResponse.json(
-        {
-          error:
-            "Upload a clear profile photo first. Didit matches your live face to that photo.",
-        },
-        { status: 422 }
-      );
     }
 
     const appUrl = (process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(
@@ -46,14 +39,13 @@ export async function POST(request: Request) {
     );
     const callbackUrl = `${appUrl}/profile?didit_done=1`;
 
-    const didit = await createBiometricAuthSession({
+    const didit = await createDiditSession({
       staffId: profile.id,
-      avatarPath: profile.avatar_url,
-      attemptType: "identity_verify",
       callbackUrl,
       metadata: {
         organization_id: profile.organization_id,
-        purpose: "staff_portal_identity",
+        purpose: "staff_portal_kyc",
+        source: "attendpro_staff_portal",
       },
     });
 
@@ -65,8 +57,7 @@ export async function POST(request: Request) {
   } catch (error) {
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Could not start identity verification",
+        error: error instanceof Error ? error.message : "Could not start KYC verification",
       },
       { status: 500 }
     );

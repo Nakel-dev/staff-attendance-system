@@ -13,7 +13,7 @@ interface ReviewItem {
   reason: string;
   live_capture_url: string | null;
   confidence_score?: number | null;
-  frame_metadata?: { faceplusplus?: { confidence?: number; matched?: boolean } };
+  frame_metadata?: Record<string, unknown>;
   liveCaptureSignedUrl?: string;
   livenessClipSignedUrl?: string;
   storedReferenceSignedUrl?: string;

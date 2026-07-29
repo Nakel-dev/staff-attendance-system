@@ -84,7 +84,7 @@ export function OrganizationSettings({ organization, kiosks = [] }: Organization
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <BiometricProviderCard organization={organization} />
+        <BiometricProviderCard />
 
         <Card>
           <CardHeader>

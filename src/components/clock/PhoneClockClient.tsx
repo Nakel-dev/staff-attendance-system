@@ -6,12 +6,6 @@ import { CheckCircle2, Loader2, ScanFace, Timer } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { LocalPhoneClockCapture } from "@/components/clock/LocalPhoneClockCapture";
-import { MotionLivenessCapture } from "@/components/face/MotionLivenessCapture";
-import { appendMotionFrames } from "@/lib/face/motion-upload";
-import { fetchWithTimeout } from "@/lib/utils/fetch-with-timeout";
-
-type Provider = "local" | "faceplusplus" | "didit";
 
 type ChallengeInfo = {
   status: string;
@@ -19,11 +13,11 @@ type ChallengeInfo = {
   expiresAt: string;
   secondsLeft: number;
   staffName: string;
-  hasAvatar: boolean;
   faceEnrolled: boolean;
   organizationName: string;
   kioskName: string;
-  provider: Provider;
+  provider: "didit";
+  providerReady?: boolean;
 };
 
 const DIDIT_KEY = (token: string) => `phone_clock_didit:${token}`;
@@ -57,6 +51,10 @@ export function PhoneClockClient({ token }: { token: string }) {
         setDoneMessage("Already completed. You can put your phone away.");
       } else if (data.challenge.status !== "pending") {
         setError(`This QR is ${data.challenge.status}. Ask reception for a new code.`);
+      } else if (data.challenge.providerReady === false) {
+        setError("Didit is not ready. Complete portal KYC or ask your admin.");
+      } else if (!data.challenge.faceEnrolled) {
+        setError("Complete Didit KYC in the staff portal first.");
       }
     } catch {
       setError("Could not load this QR link");
@@ -137,7 +135,7 @@ export function PhoneClockClient({ token }: { token: string }) {
         error?: string;
       };
       if (!res.ok || !data.sessionId || !data.sessionUrl) {
-        toast.error(data.error || "Could not start face check");
+        toast.error(data.error || "Could not start Didit");
         return;
       }
       try {
@@ -147,83 +145,10 @@ export function PhoneClockClient({ token }: { token: string }) {
       }
       window.location.href = data.sessionUrl;
     } catch {
-      toast.error("Could not start face check");
+      toast.error("Could not start Didit");
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const submitFacePlusPlus = async (payload: {
-    blob: Blob;
-    frameJpegs: Blob[];
-  }) => {
-    setSubmitting(true);
-    try {
-      const form = new FormData();
-      form.append("file", payload.blob, "selfie.jpg");
-      appendMotionFrames(form, payload.frameJpegs);
-      const res = await fetchWithTimeout(`/api/clock/${token}/complete`, {
-        method: "POST",
-        body: form,
-        timeoutMs: 90000,
-      });
-      const data = (await res.json()) as { success?: boolean; message?: string; error?: string };
-      if (data.success) {
-        setDoneMessage(data.message || "Clocked successfully");
-        toast.success(data.message || "Done");
-      } else {
-        toast.error(data.message || data.error || "Could not clock");
-        setError(data.message || data.error || "Could not clock");
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Network error");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const submitPhoto = async (
-    blob: Blob,
-    opts?: { faceDescriptor?: number[]; frameJpegs?: Blob[] }
-  ) => {
-    setSubmitting(true);
-    try {
-      const form = new FormData();
-      form.append("file", blob, "selfie.jpg");
-      if (opts?.faceDescriptor?.length) {
-        form.append("faceDescriptor", JSON.stringify(opts.faceDescriptor));
-      }
-      if (opts?.frameJpegs?.length) appendMotionFrames(form, opts.frameJpegs);
-      const res = await fetchWithTimeout(`/api/clock/${token}/complete`, {
-        method: "POST",
-        body: form,
-        timeoutMs: 90000,
-      });
-      const data = (await res.json()) as { success?: boolean; message?: string; error?: string };
-      if (data.success) {
-        setDoneMessage(data.message || "Clocked successfully");
-        toast.success(data.message || "Done");
-      } else {
-        toast.error(data.message || data.error || "Could not clock");
-        setError(data.message || data.error || "Could not clock");
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Network error");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const submitLocalClock = async (payload: {
-    blob: Blob;
-    descriptor: number[];
-    motionScore: number;
-    frameJpegs: Blob[];
-  }) => {
-    await submitPhoto(payload.blob, {
-      faceDescriptor: payload.descriptor,
-      frameJpegs: payload.frameJpegs,
-    });
   };
 
   if (loading) {
@@ -283,48 +208,16 @@ export function PhoneClockClient({ token }: { token: string }) {
 
         {error && <p className="text-center text-destructive text-sm">{error}</p>}
 
-        {expired || challenge.status !== "pending" ? null : challenge.provider === "didit" ? (
+        {expired || challenge.status !== "pending" || !challenge.faceEnrolled ? null : (
           <div className="space-y-3 text-center">
             <ScanFace className="mx-auto h-10 w-10 text-primary" />
-            <p className="text-sm">Finish face verification on this phone to {actionLabel.toLowerCase()}.</p>
+            <p className="text-sm">
+              Complete Didit verification on this phone to {actionLabel.toLowerCase()}.
+            </p>
             <Button className="w-full" size="lg" onClick={() => void startDidit()} disabled={submitting}>
               {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Start face check
+              Start Didit verification
             </Button>
-          </div>
-        ) : challenge.provider === "faceplusplus" ? (
-          <div className="space-y-2">
-            <p className="text-muted-foreground text-center text-sm">
-              Record a short live clip. We match it to your portal verification photo.
-            </p>
-            {submitting ? (
-              <div className="flex justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin" />
-              </div>
-            ) : (
-              <MotionLivenessCapture
-                disabled={submitting}
-                onVerified={(result) =>
-                  void submitFacePlusPlus({ blob: result.blob, frameJpegs: result.frameJpegs })
-                }
-              />
-            )}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <p className="text-muted-foreground text-center text-sm">
-              Capture your face. We match it to your portal enrollment.
-            </p>
-            {submitting ? (
-              <div className="flex justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin" />
-              </div>
-            ) : (
-              <LocalPhoneClockCapture
-                disabled={submitting}
-                onSubmit={submitLocalClock}
-              />
-            )}
           </div>
         )}
       </CardContent>

@@ -1,31 +1,23 @@
-export type BiometricProvider = "local" | "didit" | "faceplusplus";
+export type BiometricProvider = "didit";
 
-export const BIOMETRIC_PROVIDERS: BiometricProvider[] = ["faceplusplus", "didit", "local"];
+export const BIOMETRIC_PROVIDERS: BiometricProvider[] = ["didit"];
 
 export const BIOMETRIC_PROVIDER_LABELS: Record<BiometricProvider, string> = {
-  faceplusplus: "Face++",
-  local: "Local (free)",
   didit: "Didit",
 };
 
 export const BIOMETRIC_PROVIDER_HINTS: Record<BiometricProvider, string> = {
-  faceplusplus: "Portal face verification + kiosk Face++ compare (recommended)",
-  local: "On-device face match only — no cloud bill",
-  didit: "Third-party liveness + face match fallback",
+  didit: "Didit KYC once in portal; Didit verification again on every kiosk clock-in/out",
 };
 
-/** Legacy org rows may still store "aws" — treat as Face++. */
-export function normalizeBiometricProvider(value: unknown): BiometricProvider {
-  if (value === "faceplusplus" || value === "didit" || value === "local") return value;
-  if (value === "aws") return "faceplusplus";
-  return "faceplusplus";
+/** All legacy DB values map to Didit. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function normalizeBiometricProvider(_value?: unknown): BiometricProvider {
+  return "didit";
 }
 
 export function isBiometricProviderReady(
-  provider: BiometricProvider,
-  opts: { faceplusplusConfigured: boolean; diditConfigured: boolean }
+  opts: { diditConfigured: boolean }
 ): boolean {
-  if (provider === "faceplusplus") return opts.faceplusplusConfigured;
-  if (provider === "didit") return opts.diditConfigured;
-  return true;
+  return opts.diditConfigured;
 }

@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isDiditConfigured } from "@/lib/didit/client";
-import { isFacePlusPlusConfigured } from "@/lib/faceplusplus/client";
 
-/** Admin-facing: which biometric backends are configured on this deployment. */
+/** Admin-facing: Didit availability on this deployment. */
 export async function GET() {
   const supabase = await createClient();
   const {
@@ -22,8 +21,6 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    local: true,
     didit: isDiditConfigured(),
-    faceplusplus: isFacePlusPlusConfigured(),
   });
 }

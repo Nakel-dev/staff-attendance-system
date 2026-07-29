@@ -9,7 +9,7 @@ const bodySchema = z.object({
   attemptType: z.enum(["check_in", "check_out"]),
   pin: z.string(),
   photoCaptureUrl: z.string().optional(),
-  diditSessionId: z.string().min(8).optional(),
+  diditSessionId: z.string().min(8),
 });
 
 export async function POST(request: Request) {

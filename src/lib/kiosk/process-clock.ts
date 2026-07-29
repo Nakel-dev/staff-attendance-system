@@ -1,14 +1,11 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyKioskPin } from "@/lib/kiosk/pin";
 import {
+  diditSessionMatchesStaff,
   getDiditSessionDecision,
+  isDiditClockApproved,
   isDiditConfigured,
 } from "@/lib/didit/client";
-import {
-  compareFacesFacePlusPlus,
-  isFacePlusPlusConfigured,
-} from "@/lib/faceplusplus/client";
-import { normalizeBiometricProvider } from "@/lib/biometrics/providers";
 import type { KioskSessionContext } from "@/lib/kiosk/session";
 
 export type ClockAttemptType = "check_in" | "check_out";
@@ -153,13 +150,12 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
     return { success: false, status: "rejected", message: "Staff does not belong to this organization." };
   }
 
-  if (!staff.avatar_url || !staff.face_enrolled_at) {
-    await logAttempt(input, "liveness_fail", { reason: "not_enrolled" });
+  if (!staff.face_enrolled_at) {
+    await logAttempt(input, "liveness_fail", { reason: "kyc_not_complete" });
     return {
       success: false,
       status: "rejected",
-      message:
-        "Staff must complete camera photo and face verification in the portal before clocking in.",
+      message: "Complete Didit KYC verification in the staff portal before clocking in.",
     };
   }
 
@@ -211,23 +207,7 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
     return enqueueReview(input, "duplicate_day", staff, { consecutive: true });
   }
 
-  const diditEnabled = isDiditConfigured();
-  const faceppEnabled = isFacePlusPlusConfigured();
-  const provider = normalizeBiometricProvider(org?.biometric_provider);
-  const useDidit = provider === "didit" && diditEnabled;
-  const useFacepp = provider === "faceplusplus" && faceppEnabled;
-
-  if (provider === "faceplusplus" && !faceppEnabled) {
-    await logAttempt(input, "liveness_fail", { reason: "faceplusplus_not_configured" });
-    return {
-      success: false,
-      status: "rejected",
-      message:
-        "Face++ is not configured on the server. Ask your admin to add FACEPP_API_KEY and FACEPP_API_SECRET.",
-    };
-  }
-
-  if (provider === "didit" && !diditEnabled) {
+  if (!isDiditConfigured()) {
     await logAttempt(input, "liveness_fail", { reason: "didit_not_configured" });
     return {
       success: false,
@@ -236,197 +216,37 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
     };
   }
 
-  if (useDidit) {
-    if (!staff.avatar_url) {
-      return enqueueReview(input, "photo_review", staff);
-    }
-    if (!input.diditSessionId?.trim()) {
-      await logAttempt(input, "liveness_fail", { reason: "missing_didit_session" });
-      return {
-        success: false,
-        status: "rejected",
-        message: "Face verification is required. Complete Didit face check first.",
-      };
-    }
+  if (!input.diditSessionId?.trim()) {
+    await logAttempt(input, "liveness_fail", { reason: "missing_didit_session" });
+    return {
+      success: false,
+      status: "rejected",
+      message: "Didit verification is required. Complete Didit verification first.",
+    };
+  }
 
-    const decision = await getDiditSessionDecision(input.diditSessionId);
-    if (String(decision.raw?.vendor_data || "") !== input.staffId) {
-      await logAttempt(input, "no_match", { reason: "vendor_data_mismatch", decision });
-      return {
-        success: false,
-        status: "rejected",
-        message: "Face verification does not match the selected staff member.",
-      };
-    }
+  const decision = await getDiditSessionDecision(input.diditSessionId);
+  if (!diditSessionMatchesStaff(decision, input.staffId)) {
+    await logAttempt(input, "no_match", { reason: "vendor_data_mismatch", decision });
+    return {
+      success: false,
+      status: "rejected",
+      message: "Didit verification does not match the selected staff member.",
+    };
+  }
 
-    if (decision.status === "Approved" && decision.livenessApproved && decision.faceMatchApproved) {
-      const { data: record, error } = await admin
-        .from("attendance_records")
-        .insert({
-          organization_id: input.session.organizationId,
-          staff_id: input.staffId,
-          type: input.attemptType,
-          match_status: "auto_matched",
-          liveness_passed: true,
-          liveness_score: decision.livenessScore ?? null,
-          confidence_score: decision.faceMatchScore ?? null,
-          photo_capture_url: input.photoCaptureUrl || null,
-          kiosk_device_id: input.session.kioskId,
-        })
-        .select("id, server_timestamp")
-        .single();
-
-      if (error) {
-        if (error.message.includes("duplicate_")) {
-          return enqueueReview(input, "duplicate_day", staff, { dbError: error.message });
-        }
-        throw new Error(error.message);
-      }
-
-      await logAttempt(input, "success", {
-        recordId: record.id,
-        diditSessionId: input.diditSessionId,
-        faceMatchScore: decision.faceMatchScore,
-        livenessScore: decision.livenessScore,
-        provider: "didit",
-      });
-
-      return {
-        success: true,
-        status: "clocked",
-        message:
-          input.attemptType === "check_in"
-            ? "Face verified. Checked in successfully."
-            : "Face verified. Checked out successfully.",
-        recordId: record.id,
-      };
-    }
-
+  if (!isDiditClockApproved(decision)) {
     if (decision.status === "Declined" || !decision.livenessApproved) {
       return enqueueReview(input, "liveness_fail", staff, {
         diditSessionId: input.diditSessionId,
         diditStatus: decision.status,
-        faceMatchScore: decision.faceMatchScore,
-        livenessScore: decision.livenessScore,
       });
     }
-
-    if (!decision.faceMatchApproved || decision.status === "In Review") {
-      return enqueueReview(input, "no_match", staff, {
-        diditSessionId: input.diditSessionId,
-        diditStatus: decision.status,
-        faceMatchScore: decision.faceMatchScore,
-        livenessScore: decision.livenessScore,
-      });
-    }
-
-    await logAttempt(input, "liveness_fail", { diditStatus: decision.status });
-    return {
-      success: false,
-      status: "rejected",
-      message: `Face verification incomplete (${decision.status}). Try again.`,
-    };
-  }
-
-  if (useFacepp) {
-    if (!staff.avatar_url) {
-      return enqueueReview(input, "photo_review", staff);
-    }
-    if (!input.photoCaptureUrl?.trim()) {
-      return enqueueReview(input, "missing_photo", staff);
-    }
-
-    try {
-      const [profileDl, snapDl] = await Promise.all([
-        admin.storage.from("profile-photos").download(staff.avatar_url),
-        admin.storage.from("kiosk-attendance-photos").download(input.photoCaptureUrl),
-      ]);
-
-      if (!profileDl.data || !snapDl.data) {
-        return enqueueReview(input, "missing_photo", staff);
-      }
-
-      const comparison = await compareFacesFacePlusPlus({
-        referenceImageBytes: new Uint8Array(await profileDl.data.arrayBuffer()),
-        liveImageBytes: new Uint8Array(await snapDl.data.arrayBuffer()),
-      });
-
-      if (!comparison.matched) {
-        return enqueueReview(input, "no_match", staff, {
-          provider: "faceplusplus",
-          confidence: comparison.confidence,
-        });
-      }
-
-      const { data: record, error } = await admin
-        .from("attendance_records")
-        .insert({
-          organization_id: input.session.organizationId,
-          staff_id: input.staffId,
-          type: input.attemptType,
-          match_status: "auto_matched",
-          liveness_passed: true,
-          confidence_score: comparison.confidence,
-          photo_capture_url: input.photoCaptureUrl,
-          kiosk_device_id: input.session.kioskId,
-        })
-        .select("id, server_timestamp")
-        .single();
-
-      if (error) {
-        if (error.message.includes("duplicate_")) {
-          return enqueueReview(input, "duplicate_day", staff, { dbError: error.message });
-        }
-        throw new Error(error.message);
-      }
-
-      await logAttempt(input, "success", {
-        recordId: record.id,
-        provider: "faceplusplus",
-        confidence: comparison.confidence,
-      });
-
-      return {
-        success: true,
-        status: "clocked",
-        message:
-          input.attemptType === "check_in"
-            ? "Face++ match passed. Checked in successfully."
-            : "Face++ match passed. Checked out successfully.",
-        recordId: record.id,
-      };
-    } catch (err) {
-      await logAttempt(input, "no_match", {
-        provider: "faceplusplus",
-        error: err instanceof Error ? err.message : "faceplusplus_compare_failed",
-      });
-      return {
-        success: false,
-        status: "rejected",
-        message:
-          err instanceof Error
-            ? err.message
-            : "Face++ verification failed. Try again or contact admin.",
-      };
-    }
-  }
-
-  // Local only when org explicitly uses local
-  if (provider !== "local") {
-    await logAttempt(input, "liveness_fail", { reason: "provider_not_ready", provider });
-    return {
-      success: false,
-      status: "rejected",
-      message: "Face verification provider is not ready. Contact your admin.",
-    };
-  }
-
-  if (!input.photoCaptureUrl?.trim()) {
-    return enqueueReview(input, "missing_photo", staff);
-  }
-
-  if (!staff.avatar_url) {
-    return enqueueReview(input, "photo_review", staff);
+    return enqueueReview(input, "no_match", staff, {
+      diditSessionId: input.diditSessionId,
+      diditStatus: decision.status,
+      faceMatchScore: decision.faceMatchScore,
+    });
   }
 
   const { data: record, error } = await admin
@@ -437,7 +257,9 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
       type: input.attemptType,
       match_status: "auto_matched",
       liveness_passed: true,
-      photo_capture_url: input.photoCaptureUrl,
+      liveness_score: decision.livenessScore ?? null,
+      confidence_score: decision.faceMatchScore ?? null,
+      photo_capture_url: input.photoCaptureUrl || null,
       kiosk_device_id: input.session.kioskId,
     })
     .select("id, server_timestamp")
@@ -450,15 +272,21 @@ export async function processKioskClock(input: ProcessClockInput): Promise<Proce
     throw new Error(error.message);
   }
 
-  await logAttempt(input, "success", { recordId: record.id, provider: "local" });
+  await logAttempt(input, "success", {
+    recordId: record.id,
+    diditSessionId: input.diditSessionId,
+    provider: "didit",
+    faceMatchScore: decision.faceMatchScore,
+    livenessScore: decision.livenessScore,
+  });
 
   return {
     success: true,
     status: "clocked",
     message:
       input.attemptType === "check_in"
-        ? "Checked in successfully."
-        : "Checked out successfully.",
+        ? "Didit verified. Checked in successfully."
+        : "Didit verified. Checked out successfully.",
     recordId: record.id,
   };
 }

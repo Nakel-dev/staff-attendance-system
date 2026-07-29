@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getKioskSessionFromCookies } from "@/lib/kiosk/session";
 import { isDiditConfigured } from "@/lib/didit/client";
-import { isFacePlusPlusConfigured } from "@/lib/faceplusplus/client";
 
 export async function GET() {
   const session = await getKioskSessionFromCookies();
@@ -10,8 +9,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    faceplusplus: isFacePlusPlusConfigured(),
     didit: isDiditConfigured(),
-    primary: isFacePlusPlusConfigured() ? "faceplusplus" : isDiditConfigured() ? "didit" : "none",
+    primary: isDiditConfigured() ? "didit" : "none",
   });
 }

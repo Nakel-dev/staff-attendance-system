@@ -2,13 +2,9 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getKioskSessionFromCookies } from "@/lib/kiosk/session";
 import { isDiditConfigured } from "@/lib/didit/client";
-import { isFacePlusPlusConfigured } from "@/lib/faceplusplus/client";
-import {
-  isBiometricProviderReady,
-  normalizeBiometricProvider,
-} from "@/lib/biometrics/providers";
+import { normalizeBiometricProvider } from "@/lib/biometrics/providers";
 
-/** Kiosk: biometric mode for this organization. */
+/** Kiosk: Didit-only biometric mode. */
 export async function GET() {
   const session = await getKioskSessionFromCookies();
   if (!session) {
@@ -23,17 +19,11 @@ export async function GET() {
     .maybeSingle();
 
   const provider = normalizeBiometricProvider(org?.biometric_provider);
-  const faceppOk = isFacePlusPlusConfigured();
   const diditOk = isDiditConfigured();
-  const ready = isBiometricProviderReady(provider, {
-    faceplusplusConfigured: faceppOk,
-    diditConfigured: diditOk,
-  });
 
   return NextResponse.json({
     provider,
-    ready,
-    faceplusplusConfigured: faceppOk,
+    ready: diditOk,
     diditConfigured: diditOk,
   });
 }

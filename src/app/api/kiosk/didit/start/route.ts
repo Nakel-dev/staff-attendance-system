@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getKioskSessionFromCookies } from "@/lib/kiosk/session";
-import { verifyKioskPin } from "@/lib/kiosk/pin";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createBiometricAuthSession, isDiditConfigured } from "@/lib/didit/client";
+import { createDiditSession, isDiditConfigured } from "@/lib/didit/client";
 
 const bodySchema = z.object({
   staffId: z.string().uuid(),
   attemptType: z.enum(["check_in", "check_out"]),
-  pin: z.string().regex(/^\d{4}$/).optional(),
 });
 
+/** Start a Didit session for kiosk clock-in/out (vendor_data = staff profile id). */
 export async function POST(request: Request) {
   try {
     if (!isDiditConfigured()) {
@@ -33,7 +32,7 @@ export async function POST(request: Request) {
     const admin = createAdminClient();
     const { data: staff } = await admin
       .from("profiles")
-      .select("id, is_active, organization_id, kiosk_pin_hash, avatar_url, full_name")
+      .select("id, is_active, organization_id, full_name, face_enrolled_at")
       .eq("id", parsed.data.staffId)
       .maybeSingle();
 
@@ -41,17 +40,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Staff not found" }, { status: 404 });
     }
 
-    if (
-      staff.kiosk_pin_hash &&
-      parsed.data.pin &&
-      !verifyKioskPin(parsed.data.pin, staff.kiosk_pin_hash)
-    ) {
-      return NextResponse.json({ error: "Incorrect PIN" }, { status: 401 });
-    }
-
-    if (!staff.avatar_url) {
+    if (!staff.face_enrolled_at) {
       return NextResponse.json(
-        { error: "No profile photo on file. Upload a profile photo before face clock-in." },
+        {
+          error:
+            "Complete Didit KYC verification in the staff portal before using the kiosk.",
+        },
         { status: 422 }
       );
     }
@@ -62,14 +56,14 @@ export async function POST(request: Request) {
     );
     const callbackUrl = `${appUrl}/kiosk?didit_done=1`;
 
-    const didit = await createBiometricAuthSession({
+    const didit = await createDiditSession({
       staffId: staff.id,
-      avatarPath: staff.avatar_url,
-      attemptType: parsed.data.attemptType,
       callbackUrl,
       metadata: {
         kiosk_id: session.kioskId,
         organization_id: session.organizationId,
+        attempt_type: parsed.data.attemptType,
+        source: "attendpro_kiosk",
       },
     });
 
@@ -80,7 +74,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not start face verification" },
+      { error: error instanceof Error ? error.message : "Could not start Didit verification" },
       { status: 500 }
     );
   }

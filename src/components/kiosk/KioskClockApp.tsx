@@ -54,7 +54,7 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
   const [online, setOnline] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [resultMessage, setResultMessage] = useState("");
-  const [providerMode, setProviderMode] = useState<"local" | "didit" | "faceplusplus">("local");
+  const providerMode = "didit";
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [qrToken, setQrToken] = useState<string | null>(null);
   const [qrSecondsLeft, setQrSecondsLeft] = useState(60);
@@ -72,19 +72,6 @@ export function KioskClockApp({ staff, deviceName }: KioskClockAppProps) {
         s.department.toLowerCase().includes(q)
     );
   }, [query, staff]);
-
-  useEffect(() => {
-    void fetch("/api/kiosk/biometric-config")
-      .then((r) => r.json())
-      .then((d: { provider?: string }) => {
-        const provider =
-          d.provider === "didit" || d.provider === "faceplusplus" || d.provider === "local"
-            ? d.provider
-            : "local";
-        setProviderMode(provider);
-      })
-      .catch(() => setProviderMode("local"));
-  }, []);
 
   useEffect(() => {
     const sync = () => setOnline(navigator.onLine);

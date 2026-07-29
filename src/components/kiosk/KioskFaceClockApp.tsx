@@ -6,17 +6,16 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { KioskVideoCapture } from "@/components/kiosk/KioskVideoCapture";
 import type { Profile } from "@/lib/types";
 
-type Step = "identify" | "video" | "didit" | "done";
+type Step = "identify" | "verify" | "done";
 
 interface KioskFaceClockAppProps {
   staff: Pick<Profile, "id" | "full_name" | "department" | "employee_code">[];
   deviceName: string;
 }
 
-/** Reception kiosk: staff ID → 3s video → Face++ auto-verify (Didit fallback). */
+/** Reception kiosk: staff ID → Didit verification every clock in/out. */
 export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps) {
   const [query, setQuery] = useState("");
   const [employeeCode, setEmployeeCode] = useState("");
@@ -26,7 +25,6 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
   const [processing, setProcessing] = useState(false);
   const [online, setOnline] = useState(true);
   const [resultMessage, setResultMessage] = useState("");
-  const [faceppEnabled, setFaceppEnabled] = useState(false);
   const [diditEnabled, setDiditEnabled] = useState(false);
   const [diditUrl, setDiditUrl] = useState<string | null>(null);
   const [diditSessionId, setDiditSessionId] = useState<string | null>(null);
@@ -34,10 +32,7 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
   useEffect(() => {
     void fetch("/api/kiosk/face-clock/config")
       .then((r) => r.json())
-      .then((d: { faceplusplus?: boolean; didit?: boolean }) => {
-        setFaceppEnabled(!!d.faceplusplus);
-        setDiditEnabled(!!d.didit);
-      })
+      .then((d: { didit?: boolean }) => setDiditEnabled(!!d.didit))
       .catch(() => {});
   }, []);
 
@@ -68,7 +63,7 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
       const data = (await res.json()) as { nextAttempt?: "check_in" | "check_out" };
       setAttemptType(data.nextAttempt || "check_in");
     }
-    setStep("video");
+    setStep("verify");
   };
 
   const pickByCode = () => {
@@ -85,25 +80,26 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
     void pickStaff(member);
   };
 
-  const startDiditFallback = useCallback(async () => {
-    if (!selected || !diditEnabled) return;
+  const startDidit = useCallback(async () => {
+    if (!selected || !diditEnabled) {
+      toast.error("Didit is not configured on this server.");
+      return;
+    }
     setProcessing(true);
     try {
       const res = await fetch("/api/kiosk/didit/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          staffId: selected.id,
-          attemptType,
-        }),
+        body: JSON.stringify({ staffId: selected.id, attemptType }),
       });
       const data = (await res.json()) as { error?: string; sessionUrl?: string; sessionId?: string };
-      if (!res.ok || !data.sessionUrl || !data.sessionId) throw new Error(data.error || "Could not start Didit");
+      if (!res.ok || !data.sessionUrl || !data.sessionId) {
+        throw new Error(data.error || "Could not start Didit");
+      }
       setDiditUrl(data.sessionUrl);
       setDiditSessionId(data.sessionId);
-      setStep("didit");
       window.open(data.sessionUrl, "didit_kiosk", "width=480,height=720");
-      toast.message("Complete face verification in the Didit window");
+      toast.message("Complete Didit verification in the popup window");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Didit failed");
     } finally {
@@ -112,7 +108,7 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
   }, [attemptType, diditEnabled, selected]);
 
   useEffect(() => {
-    if (step !== "didit" || !diditSessionId || !selected) return;
+    if (step !== "verify" || !diditSessionId || !selected) return;
 
     const interval = setInterval(async () => {
       try {
@@ -120,12 +116,11 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
         const data = (await res.json()) as {
           terminal?: boolean;
           status?: string;
-          livenessApproved?: boolean;
-          faceMatchApproved?: boolean;
+          clockApproved?: boolean;
         };
         if (!res.ok || !data.terminal) return;
 
-        if (data.status === "Approved" && data.livenessApproved && data.faceMatchApproved) {
+        if (data.clockApproved) {
           clearInterval(interval);
           const complete = await fetch("/api/kiosk/face-clock/didit-complete", {
             method: "POST",
@@ -142,7 +137,7 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
             setStep("done");
             toast.success(result.message);
           } else {
-            toast.error(result.message || "Didit clock failed");
+            toast.error(result.message || "Clock failed");
             setStep("identify");
           }
         } else {
@@ -157,45 +152,6 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
 
     return () => clearInterval(interval);
   }, [attemptType, diditSessionId, selected, step]);
-
-  const completeFaceClock = async (payload: { video: Blob; snapshot: Blob }) => {
-    if (!selected) return;
-    setProcessing(true);
-    try {
-      const form = new FormData();
-      form.append("staffId", selected.id);
-      form.append("attemptType", attemptType);
-      form.append("file", payload.video, "verification.webm");
-      form.append("snapshot", payload.snapshot, "snapshot.jpg");
-
-      const res = await fetch("/api/kiosk/face-clock/complete", { method: "POST", body: form });
-      const data = (await res.json()) as {
-        success?: boolean;
-        message?: string;
-        needsDidit?: boolean;
-        faceMatchConfidence?: number;
-      };
-
-      if (data.success) {
-        setResultMessage(data.message || "Clock recorded.");
-        setStep("done");
-        toast.success(data.message);
-        return;
-      }
-
-      if (data.needsDidit && diditEnabled) {
-        toast.error(data.message || "Face++ failed");
-        await startDiditFallback();
-        return;
-      }
-
-      toast.error(data.message || "Face verification failed");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Clock failed");
-    } finally {
-      setProcessing(false);
-    }
-  };
 
   const reset = () => {
     setSelected(null);
@@ -214,8 +170,7 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
           <h1 className="text-2xl font-bold">Reception Kiosk</h1>
           <p className="text-muted-foreground text-sm">{deviceName}</p>
           <p className="text-muted-foreground text-xs">
-            Staff ID → 3s video →{" "}
-            {faceppEnabled ? "Face++ auto-verify" : diditEnabled ? "Didit verify" : "not configured"}
+            Staff ID → Didit verification every {diditEnabled ? "check-in/out" : "clock (Didit not configured)"}
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm">
@@ -266,50 +221,55 @@ export function KioskFaceClockApp({ staff, deviceName }: KioskFaceClockAppProps)
         </Card>
       )}
 
-      {step === "video" && selected && (
-        <div className="space-y-3">
-          <div className="flex justify-center gap-2">
-            <Button
-              size="sm"
-              variant={attemptType === "check_in" ? "default" : "outline"}
-              onClick={() => setAttemptType("check_in")}
-            >
-              <LogIn className="mr-1 h-4 w-4" />
-              Check in
-            </Button>
-            <Button
-              size="sm"
-              variant={attemptType === "check_out" ? "default" : "outline"}
-              onClick={() => setAttemptType("check_out")}
-            >
-              <LogOut className="mr-1 h-4 w-4" />
-              Check out
-            </Button>
-          </div>
-          <KioskVideoCapture
-            staffName={selected.full_name}
-            attemptType={attemptType}
-            disabled={processing}
-            onCapture={(payload) => void completeFaceClock(payload)}
-          />
-          <Button variant="ghost" className="w-full" onClick={reset}>
-            Back
-          </Button>
-        </div>
-      )}
-
-      {step === "didit" && (
+      {step === "verify" && selected && (
         <Card>
-          <CardContent className="space-y-4 py-8 text-center">
-            <Loader2 className="mx-auto h-8 w-8 animate-spin" />
-            <p className="font-medium">Complete Didit verification in the popup window</p>
-            {diditUrl && (
-              <Button variant="outline" onClick={() => window.open(diditUrl, "didit_kiosk")}>
-                Re-open Didit
+          <CardHeader>
+            <CardTitle>{selected.full_name}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex justify-center gap-2">
+              <Button
+                size="sm"
+                variant={attemptType === "check_in" ? "default" : "outline"}
+                onClick={() => setAttemptType("check_in")}
+              >
+                <LogIn className="mr-1 h-4 w-4" />
+                Check in
               </Button>
+              <Button
+                size="sm"
+                variant={attemptType === "check_out" ? "default" : "outline"}
+                onClick={() => setAttemptType("check_out")}
+              >
+                <LogOut className="mr-1 h-4 w-4" />
+                Check out
+              </Button>
+            </div>
+            <p className="text-muted-foreground text-center text-sm">
+              Verify with Didit to {attemptType === "check_in" ? "check in" : "check out"}.
+            </p>
+            <Button
+              className="w-full"
+              size="lg"
+              onClick={() => void startDidit()}
+              disabled={processing || !diditEnabled}
+            >
+              {processing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Start Didit verification
+            </Button>
+            {diditSessionId && (
+              <div className="space-y-2 text-center">
+                <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
+                <p className="text-sm">Waiting for Didit…</p>
+                {diditUrl && (
+                  <Button variant="outline" size="sm" onClick={() => window.open(diditUrl, "didit_kiosk")}>
+                    Re-open Didit
+                  </Button>
+                )}
+              </div>
             )}
-            <Button variant="ghost" onClick={reset}>
-              Cancel
+            <Button variant="ghost" className="w-full" onClick={reset}>
+              Back
             </Button>
           </CardContent>
         </Card>

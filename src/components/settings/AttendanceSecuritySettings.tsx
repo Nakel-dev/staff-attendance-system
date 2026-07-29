@@ -123,7 +123,7 @@ export function AttendanceSecuritySettings({ initial }: AttendanceSecuritySettin
           Attendance Security
         </CardTitle>
         <CardDescription>
-          Choose how staff verify their face (no ID/KYC). Clock-in stays at the reception kiosk.
+          Staff verify identity once with Didit KYC in the portal. Clock-in stays at the reception kiosk (Didit every time).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
