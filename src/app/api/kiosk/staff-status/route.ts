@@ -16,11 +16,16 @@ export async function GET(request: Request) {
   const admin = createAdminClient();
   const { data: staff } = await admin
     .from("profiles")
-    .select("id, is_active, organization_id")
+    .select("id, is_active, organization_id, face_enrolled_at")
     .eq("id", staffId)
     .maybeSingle();
 
-  if (!staff || staff.organization_id !== session.organizationId || !staff.is_active) {
+  if (
+    !staff ||
+    staff.organization_id !== session.organizationId ||
+    !staff.is_active ||
+    !staff.face_enrolled_at
+  ) {
     return NextResponse.json({ error: "Staff not found" }, { status: 404 });
   }
 

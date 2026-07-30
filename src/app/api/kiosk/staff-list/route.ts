@@ -22,6 +22,7 @@ export async function GET(request: Request) {
     .eq("organization_id", session.organizationId)
     .eq("role", "staff")
     .eq("is_active", true)
+    .not("face_enrolled_at", "is", null)
     .order("full_name");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
