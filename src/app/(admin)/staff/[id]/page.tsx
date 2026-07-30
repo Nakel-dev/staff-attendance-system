@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { StaffCard } from "@/components/staff/StaffCard";
 import { StaffForm } from "@/components/staff/StaffForm";
+import { StaffDiditVerificationCard } from "@/components/staff/StaffDiditVerificationCard";
 import { StaffProfileView } from "@/components/staff/StaffProfileView";
 import { ProfilePhotoCard } from "@/components/profile/ProfilePhotoCard";
 import { getSignedProfilePhotoUrl } from "@/lib/storage/photos";
@@ -64,11 +65,18 @@ export default async function StaffProfilePage({
         {isAdmin && <StaffForm profile={profile} />}
       </div>
       {isAdmin && (
-        <ProfilePhotoCard
-          profile={profile}
-          avatarDisplayUrl={avatarDisplayUrl}
-          staffProfileId={profile.id}
-        />
+        <>
+          <StaffDiditVerificationCard
+            staffId={profile.id}
+            staffName={profile.full_name}
+            faceEnrolledAt={profile.face_enrolled_at}
+          />
+          <ProfilePhotoCard
+            profile={profile}
+            avatarDisplayUrl={avatarDisplayUrl}
+            staffProfileId={profile.id}
+          />
+        </>
       )}
       <StaffProfileView
         staffId={params.id}

@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { writeAuditLog } from "@/lib/actions/audit";
 import { hashKioskPin, isValidKioskPin } from "@/lib/kiosk/pin";
 import { allocateEmployeeCode } from "@/lib/staff/employee-code";
 import type { Role } from "@/lib/types";
@@ -208,6 +209,58 @@ export async function toggleStaffStatus(id: string, isActive: boolean) {
 
 export async function deactivateStaff(id: string) {
   return toggleStaffStatus(id, false);
+}
+
+/** Admin: clear Didit KYC so the staff member must verify again in the portal. */
+export async function resetStaffDiditVerification(staffId: string) {
+  try {
+    const auth = await requireOrgAdmin();
+    if ("error" in auth) return { error: auth.error };
+
+    const scope = await assertStaffInOrg(staffId, auth.adminProfile.organization_id);
+    if ("error" in scope) return { error: scope.error };
+
+    const { data: targetProfile } = await scope.admin
+      .from("profiles")
+      .select("full_name, face_enrolled_at")
+      .eq("id", staffId)
+      .single();
+
+    if (!targetProfile?.face_enrolled_at) {
+      return { error: "This staff member has not completed Didit verification." };
+    }
+
+    const { error } = await scope.admin
+      .from("profiles")
+      .update({
+        face_enrolled_at: null,
+        didit_identity_key: null,
+        didit_enrollment_session_id: null,
+        face_liveness_score: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", staffId);
+
+    if (error) return { error: error.message };
+
+    await writeAuditLog({
+      action: "didit_verification_reset",
+      resourceType: "profile",
+      resourceId: staffId,
+      metadata: {
+        staffName: targetProfile.full_name,
+        resetByAdminId: auth.adminProfile.id,
+      },
+    });
+
+    revalidatePath("/staff");
+    revalidatePath(`/staff/${staffId}`);
+    return { success: true };
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : "Failed to reset Didit verification",
+    };
+  }
 }
 
 export async function deleteStaffMember(id: string) {
