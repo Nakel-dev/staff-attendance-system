@@ -1,13 +1,17 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { DiditValidationError } from "@/lib/didit/errors";
+import {
+  assertDiditClockMatchesEnrollment,
+  assertDiditIdentityAvailableForStaff,
+  assertNoDiditMatchConflict,
+  findEnrolledStaffWithDiditIdentity,
+  getStaffDiditBinding,
+  resolveDiditIdentityHash,
+} from "@/lib/didit/identity";
 
 const DIDIT_BASE = "https://verification.didit.me/v3";
 
-export class DiditValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "DiditValidationError";
-  }
-}
+export { DiditValidationError } from "@/lib/didit/errors";
 
 export function isDiditConfigured(): boolean {
   return Boolean(process.env.DIDIT_API_KEY && process.env.DIDIT_WORKFLOW_ID);
@@ -224,14 +228,45 @@ export async function validateDiditClockSession(
     );
   }
 
+  const binding = await getStaffDiditBinding(staffId);
+  if (!binding) {
+    throw new DiditValidationError("Staff profile not found.");
+  }
+
+  await assertDiditClockMatchesEnrollment({
+    staffId,
+    decision,
+    binding,
+  });
+
+  await assertNoDiditMatchConflict({
+    organizationId: binding.organizationId,
+    staffId,
+    decision,
+  });
+
+  const clockIdentityHash = resolveDiditIdentityHash(decision);
+  if (clockIdentityHash) {
+    const duplicate = await findEnrolledStaffWithDiditIdentity(
+      binding.organizationId,
+      clockIdentityHash,
+      staffId
+    );
+    if (duplicate) {
+      throw new DiditValidationError(
+        "This identity is already verified for another staff account in your organization."
+      );
+    }
+  }
+
   return decision;
 }
 
-/** Portal KYC: staff binding and block cross-account session reuse. */
+/** Portal KYC: staff binding, identity uniqueness, and block cross-account session reuse. */
 export async function validateDiditEnrollmentSession(
   staffId: string,
   diditSessionId: string
-): Promise<DiditDecisionResult> {
+): Promise<DiditDecisionResult & { identityHash: string }> {
   const decision = await getDiditSessionDecision(diditSessionId);
 
   if (!diditSessionMatchesStaff(decision, staffId)) {
@@ -257,7 +292,18 @@ export async function validateDiditEnrollmentSession(
     );
   }
 
-  return decision;
+  const binding = await getStaffDiditBinding(staffId);
+  if (!binding) {
+    throw new DiditValidationError("Staff profile not found.");
+  }
+
+  const identityHash = await assertDiditIdentityAvailableForStaff({
+    organizationId: binding.organizationId,
+    staffId,
+    decision,
+  });
+
+  return { ...decision, identityHash };
 }
 
 export function isTerminalDiditStatus(status: string): boolean {

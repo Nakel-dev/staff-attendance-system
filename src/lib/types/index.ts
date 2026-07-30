@@ -48,6 +48,8 @@ export interface Profile {
   face_reference_photo_url?: string | null;
   face_reference_video_url?: string | null;
   face_liveness_score?: number | null;
+  didit_identity_key?: string | null;
+  didit_enrollment_session_id?: string | null;
   is_active: boolean;
   date_joined: string;
   created_at: string;

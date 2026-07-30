@@ -57,10 +57,13 @@ export async function GET(request: Request) {
 
     const terminal = isTerminalDiditStatus(decision.status);
     let approved = isKycEnrollmentApproved(decision);
+    let identityHash: string | null = null;
 
     if (approved) {
       try {
-        decision = await validateDiditEnrollmentSession(profile.id, sessionId);
+        const validated = await validateDiditEnrollmentSession(profile.id, sessionId);
+        identityHash = validated.identityHash;
+        decision = validated;
       } catch (error) {
         approved = false;
         if (error instanceof DiditValidationError) {
@@ -86,7 +89,7 @@ export async function GET(request: Request) {
     let enrolled = false;
     let enrolledAt: string | null = null;
 
-    if (approved) {
+    if (approved && identityHash) {
       const now = new Date().toISOString();
       const admin = createAdminClient();
       const { error } = await admin
@@ -94,6 +97,8 @@ export async function GET(request: Request) {
         .update({
           face_enrolled_at: now,
           face_liveness_score: decision.livenessScore ?? null,
+          didit_identity_key: identityHash,
+          didit_enrollment_session_id: decision.sessionId,
           updated_at: now,
         })
         .eq("id", profile.id);
@@ -108,9 +113,21 @@ export async function GET(request: Request) {
           metadata: {
             method: "didit_kyc",
             sessionId: decision.sessionId,
+            identityHash,
             faceMatchScore: decision.faceMatchScore,
             livenessScore: decision.livenessScore,
           },
+        });
+      } else if (/profiles_org_didit_identity_uq|duplicate key/i.test(error.message)) {
+        return NextResponse.json({
+          sessionId: decision.sessionId,
+          status: decision.status,
+          terminal,
+          approved: false,
+          error:
+            "This identity is already verified for another staff account in your organization.",
+          enrolled: false,
+          enrolledAt: null,
         });
       }
     }
